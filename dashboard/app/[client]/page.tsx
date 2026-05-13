@@ -38,6 +38,7 @@ type Post = {
   comments: number | null;
   posted_date: string | null;
   date_scraped: string;
+  excluded: boolean;
 };
 
 function fmt(n: number | null) {
@@ -121,7 +122,25 @@ function PlatformBreakdown({ data }: { data: Post[] }) {
   );
 }
 
-function PostsTable({ posts }: { posts: Post[] }) {
+function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <button
+      onClick={onChange}
+      title={checked ? "Excluded from analytics — click to include" : "Included in analytics — click to exclude"}
+      className={`relative inline-flex h-5 w-9 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ${
+        checked ? "bg-gray-700" : "bg-indigo-500"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition duration-200 ${
+          checked ? "translate-x-0" : "translate-x-4"
+        }`}
+      />
+    </button>
+  );
+}
+
+function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number, excluded: boolean) => void }) {
   if (posts.length === 0)
     return <div className="flex items-center justify-center h-48 text-gray-500">No posts yet for this platform</div>;
 
@@ -129,6 +148,7 @@ function PostsTable({ posts }: { posts: Post[] }) {
     <table className="w-full text-sm">
       <thead>
         <tr className="border-b border-gray-800 text-gray-400 text-xs uppercase tracking-wider">
+          <th className="text-center px-4 py-3 font-medium" title="Toggle to include/exclude from analytics">Count</th>
           <th className="text-left px-4 py-3 font-medium">Date</th>
           <th className="text-left px-4 py-3 font-medium">Account</th>
           <th className="text-left px-4 py-3 font-medium">Type</th>
@@ -143,8 +163,13 @@ function PostsTable({ posts }: { posts: Post[] }) {
         {posts.map((post, i) => (
           <tr
             key={post.id}
-            className={`border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors ${i === posts.length - 1 ? "border-0" : ""}`}
+            className={`border-b border-gray-800/50 transition-colors ${
+              post.excluded ? "opacity-40" : "hover:bg-gray-800/30"
+            } ${i === posts.length - 1 ? "border-0" : ""}`}
           >
+            <td className="px-4 py-3 text-center">
+              <Toggle checked={!post.excluded} onChange={() => onToggle(post.id, !post.excluded)} />
+            </td>
             <td className="px-4 py-3 text-gray-400 whitespace-nowrap">{post.posted_date ? post.posted_date.slice(0, 10) : "—"}</td>
             <td className="px-4 py-3 text-gray-300 whitespace-nowrap">{post.account}</td>
             <td className="px-4 py-3">
@@ -191,10 +216,22 @@ export default function ClientPage() {
     ? posts
     : posts.filter((p) => p.platform === activePlatform.toLowerCase());
 
-  const totalViews = filtered.reduce((s, p) => s + (p.views ?? 0), 0);
-  const totalLikes = filtered.reduce((s, p) => s + (p.likes ?? 0), 0);
-  const totalComments = filtered.reduce((s, p) => s + (p.comments ?? 0), 0);
-  const avgViews = filtered.length > 0 ? Math.round(totalViews / filtered.length) : 0;
+  // Only count non-excluded posts in stats
+  const counted = filtered.filter((p) => !p.excluded);
+  const totalViews = counted.reduce((s, p) => s + (p.views ?? 0), 0);
+  const totalLikes = counted.reduce((s, p) => s + (p.likes ?? 0), 0);
+  const totalComments = counted.reduce((s, p) => s + (p.comments ?? 0), 0);
+  const avgViews = counted.length > 0 ? Math.round(totalViews / counted.length) : 0;
+
+  async function handleToggle(id: number, newExcluded: boolean) {
+    // Optimistic update
+    setPosts((prev) => prev.map((p) => p.id === id ? { ...p, excluded: newExcluded } : p));
+    await fetch("/api/posts", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, excluded: newExcluded }),
+    });
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
@@ -268,26 +305,26 @@ export default function ClientPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <p className="text-gray-400 text-sm font-medium mb-4">Views & Likes Over Time</p>
-                <ViewsChart data={filtered} />
+                <ViewsChart data={counted} />
               </div>
               <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
                 <p className="text-gray-400 text-sm font-medium mb-4">Performance by Platform</p>
-                <PlatformBreakdown data={posts} />
+                <PlatformBreakdown data={posts.filter(p => !p.excluded)} />
               </div>
             </div>
           )}
 
           {/* Platform chart */}
-          {activePlatform !== "Overview" && filtered.length > 0 && (
+          {activePlatform !== "Overview" && counted.length > 0 && (
             <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 mb-6">
               <p className="text-gray-400 text-sm font-medium mb-4">{activePlatform} — Views Over Time</p>
-              <ViewsChart data={filtered} />
+              <ViewsChart data={counted} />
             </div>
           )}
 
           {/* Table */}
           <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <PostsTable posts={filtered} />
+            <PostsTable posts={filtered} onToggle={handleToggle} />
           </div>
 
           <p className="text-gray-600 text-xs mt-4 text-right">
