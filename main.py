@@ -152,7 +152,7 @@ def scrape_instagram():
             posts = run_actor("apify~instagram-scraper", {
                 "directUrls": [f"https://www.instagram.com/{h}/" for h in batch],
                 "resultsType": "posts",
-                "resultsLimit": 20,
+                "resultsLimit": 50,
             })
             all_posts.extend(posts)
             print(f"  → {len(posts)} posts")
