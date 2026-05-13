@@ -1,19 +1,13 @@
 import os
 import time
+import psycopg2
 import requests
 from datetime import datetime, timezone
 from collections import Counter
 
 # Config from environment variables
-NOTION_TOKEN = os.environ["NOTION_TOKEN"]
-NOTION_DATABASE_ID = os.environ["NOTION_DATABASE_ID"]
+DATABASE_URL = os.environ["DATABASE_URL"]
 APIFY_TOKEN = os.environ["APIFY_TOKEN"]
-
-NOTION_HEADERS = {
-    "Authorization": f"Bearer {NOTION_TOKEN}",
-    "Content-Type": "application/json",
-    "Notion-Version": "2022-06-28",
-}
 
 ACCOUNTS = [
     {"handle": "cosmos",        "client": "Cosmos", "account": "@cosmos",        "start_date": "2026-05-13"},
@@ -31,34 +25,41 @@ POST_TYPE_MAP = {
 }
 
 
+def get_db():
+    return psycopg2.connect(DATABASE_URL)
+
+
+def setup_db():
+    """Create tables if they don't exist."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS posts (
+                    id SERIAL PRIMARY KEY,
+                    client TEXT,
+                    account TEXT,
+                    platform TEXT DEFAULT 'instagram',
+                    shortcode TEXT UNIQUE,
+                    post_url TEXT,
+                    caption TEXT,
+                    post_type TEXT,
+                    views INTEGER,
+                    likes INTEGER,
+                    comments INTEGER,
+                    posted_date DATE,
+                    date_scraped TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+        conn.commit()
+    print("  Database ready.")
+
+
 def get_existing_shortcodes():
-    """Return a set of all shortcodes already in the Notion database."""
-    shortcodes = set()
-    has_more = True
-    start_cursor = None
-
-    while has_more:
-        payload = {"page_size": 100}
-        if start_cursor:
-            payload["start_cursor"] = start_cursor
-
-        resp = requests.post(
-            f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query",
-            headers=NOTION_HEADERS,
-            json=payload,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-
-        for page in data["results"]:
-            rt = page["properties"].get("Shortcode", {}).get("rich_text", [])
-            if rt:
-                shortcodes.add(rt[0]["text"]["content"])
-
-        has_more = data.get("has_more", False)
-        start_cursor = data.get("next_cursor")
-
-    return shortcodes
+    """Return a set of all shortcodes already in the database."""
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT shortcode FROM posts WHERE platform = 'instagram'")
+            return {row[0] for row in cur.fetchall()}
 
 
 def scrape_batch(handles):
@@ -76,7 +77,6 @@ def scrape_batch(handles):
     dataset_id = run["defaultDatasetId"]
     status = run["status"]
 
-    # Poll if still running
     while status not in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
         time.sleep(10)
         status_resp = requests.get(
@@ -107,50 +107,49 @@ def get_account_info(input_url):
     return "Unknown", "Unknown"
 
 
-def create_notion_page(post):
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+def insert_post(post):
     client, account = get_account_info(post.get("inputUrl"))
     posted_date = (post.get("timestamp") or "")[:10] or None
     views = post.get("videoViewCount") or post.get("playCount")
     likes = post.get("likesCount", 0)
     comments = post.get("commentsCount", 0)
+    post_type = POST_TYPE_MAP.get(post.get("type", ""), "Video")
 
-    properties = {
-        "Post":      {"title":     [{"text": {"content": post["shortCode"]}}]},
-        "Client":    {"select":    {"name": client}},
-        "Account":   {"select":    {"name": account}},
-        "Shortcode": {"rich_text": [{"text": {"content": post["shortCode"]}}]},
-        "Post URL":  {"url": post.get("url", "")},
-        "Caption":   {"rich_text": [{"text": {"content": (post.get("caption") or "")[:500]}}]},
-        "Post Type": {"select":    {"name": POST_TYPE_MAP.get(post.get("type", ""), "Video")}},
-        "Date Scraped": {"date":   {"start": now}},
-        "Comments":  {"number": comments},
-    }
-
-    if views and views > 0:
-        properties["Views"] = {"number": views}
-    if likes is not None and likes >= 0:
-        properties["Likes"] = {"number": likes}
-    if posted_date:
-        properties["Posted Date"] = {"date": {"start": posted_date}}
-
-    resp = requests.post(
-        "https://api.notion.com/v1/pages",
-        headers=NOTION_HEADERS,
-        json={"parent": {"database_id": NOTION_DATABASE_ID}, "properties": properties},
-    )
-    return resp.status_code == 200, resp.text
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO posts
+                    (client, account, platform, shortcode, post_url, caption, post_type, views, likes, comments, posted_date)
+                VALUES (%s, %s, 'instagram', %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (shortcode) DO NOTHING
+            """, (
+                client,
+                account,
+                post["shortCode"],
+                post.get("url", ""),
+                (post.get("caption") or "")[:500],
+                post_type,
+                views if views and views > 0 else None,
+                likes if likes is not None and likes >= 0 else None,
+                comments,
+                posted_date,
+            ))
+        conn.commit()
 
 
 def main():
     print(f"\n=== Instagram Analytics Run — {datetime.now(timezone.utc).isoformat()} ===\n")
 
-    # Step 1: existing shortcodes
-    print("Fetching existing shortcodes from Notion...")
+    # Step 1: setup DB schema
+    print("Setting up database...")
+    setup_db()
+
+    # Step 2: existing shortcodes
+    print("Fetching existing shortcodes from Postgres...")
     existing = get_existing_shortcodes()
     print(f"  {len(existing)} posts already in database\n")
 
-    # Step 2: scrape in two batches
+    # Step 3: scrape in two batches
     print("Scraping Instagram accounts...")
     handles = [a["handle"] for a in ACCOUNTS]
     all_posts = []
@@ -162,7 +161,7 @@ def main():
 
     print(f"\nTotal scraped: {len(all_posts)} posts\n")
 
-    # Step 3: deduplicate + apply per-account start dates
+    # Step 4: deduplicate + apply per-account start dates
     start_date_map = {a["account"]: a["start_date"] for a in ACCOUNTS}
 
     def is_new(post):
@@ -179,7 +178,7 @@ def main():
         return True
 
     new_posts = [p for p in all_posts if is_new(p)]
-    print(f"New posts (not yet in Notion): {len(new_posts)}")
+    print(f"New posts (not yet in database): {len(new_posts)}")
 
     per_account = Counter()
     for p in new_posts:
@@ -188,20 +187,20 @@ def main():
     for acct, n in sorted(per_account.items()):
         print(f"  {acct}: {n}")
 
-    # Step 4: write to Notion
+    # Step 5: write to Postgres
     if not new_posts:
         print("\nNothing new to write. Done.")
         return
 
-    print(f"\nWriting {len(new_posts)} new posts to Notion...")
+    print(f"\nWriting {len(new_posts)} new posts to Postgres...")
     ok = fail = 0
     for post in new_posts:
-        success, err = create_notion_page(post)
-        if success:
+        try:
+            insert_post(post)
             ok += 1
-        else:
+        except Exception as e:
             fail += 1
-            print(f"  FAILED {post['shortCode']}: {err}")
+            print(f"  FAILED {post['shortCode']}: {e}")
 
     print(f"\n✓ Written: {ok}  ✗ Failed: {fail}")
     print(f"\n=== Run complete — {datetime.now(timezone.utc).isoformat()} ===\n")
