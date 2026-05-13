@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 
 const PINK = "#E82E6A";
-const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo"];
+const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo", "Olive"];
 
 const PLATFORM_COLORS: Record<string, string> = {
   instagram: "#E82E6A",

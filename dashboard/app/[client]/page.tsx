@@ -9,7 +9,7 @@ import {
 } from "recharts";
 
 const PINK = "#E82E6A";
-const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo"];
+const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo", "Olive"];
 const PLATFORMS = ["Overview", "Instagram", "TikTok", "Twitter", "ManyChat"];
 const TIME_RANGES = ["1D", "5D", "1M", "6M", "YTD", "All"];
 

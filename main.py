@@ -17,6 +17,7 @@ INSTAGRAM_ACCOUNTS = [
     {"handle": "gotwabi",       "client": "Wabi",   "account": "@gotwabi",       "start_date": None},
     {"handle": "finthetourist", "client": "Wabi",   "account": "@finthetourist", "start_date": None},
     {"handle": "yahoo",         "client": "Yahoo",  "account": "@yahoo",         "start_date": "2026-05-13"},
+    {"handle": "oliveapp",      "client": "Olive",  "account": "@oliveapp",      "start_date": "2026-02-15"},
 ]
 
 TIKTOK_ACCOUNTS = [
