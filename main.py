@@ -30,7 +30,7 @@ TWITTER_ACCOUNTS = [
 POST_TYPE_MAP = {
     "Video": "Video", "GraphVideo": "Video",
     "Image": "Image", "GraphImage": "Image",
-    "Sidecar": "Sidecar", "GraphSidecar": "Sidecar",
+    "Sidecar": "Carousel", "GraphSidecar": "Carousel",
 }
 
 # ── Database ──────────────────────────────────────────────────────────────────
