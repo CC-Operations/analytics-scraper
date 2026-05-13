@@ -232,8 +232,8 @@ function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number,
               </span>
             </td>
             <td className="px-4 py-3">
-              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[post.post_type] ?? "bg-white/5 text-white/40 border border-white/10"}`}>
-                {post.post_type || "—"}
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${TYPE_COLORS[post.post_type === "Sidecar" ? "Carousel" : post.post_type] ?? "bg-white/5 text-white/40 border border-white/10"}`}>
+                {post.post_type === "Sidecar" ? "Carousel" : (post.post_type || "—")}
               </span>
             </td>
             <td className="px-4 py-3 text-white/50 max-w-xs truncate">{post.caption || <span className="text-white/20">—</span>}</td>

@@ -70,8 +70,8 @@ function AnimatedStat({ label, value, delay = 0 }: { label: string; value: numbe
 
   return (
     <div ref={ref}
-      className="animate-fade-up animate-pink-pulse bg-white/[0.03] border border-white/[0.06] rounded-2xl p-8 hover:border-white/10 transition-colors"
-      style={{ animationDelay: `${delay}ms`, animationFillMode: "forwards" }}>
+      className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-8 hover:border-white/10 transition-colors"
+      style={{ animation: `fadeUp 0.5s ease ${delay}ms forwards, pinkPulse 3s ease-in-out ${delay}ms infinite`, opacity: 0 }}>
       <p className="text-white/30 text-xs uppercase tracking-widest mb-3 font-medium">{label}</p>
       <p className="text-4xl font-bold text-white tabular-nums">{fmt(count)}</p>
     </div>
