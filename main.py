@@ -16,12 +16,12 @@ NOTION_HEADERS = {
 }
 
 ACCOUNTS = [
-    {"handle": "cosmos",        "client": "Cosmos", "account": "@cosmos"},
-    {"handle": "poke",          "client": "Poke",   "account": "@poke"},
-    {"handle": "wabimaxxing",   "client": "Wabi",   "account": "@wabimaxxing"},
-    {"handle": "gotwabi",       "client": "Wabi",   "account": "@gotwabi"},
-    {"handle": "finthetourist", "client": "Wabi",   "account": "@finthetourist"},
-    {"handle": "yahoo",         "client": "Yahoo",  "account": "@yahoo"},
+    {"handle": "cosmos",        "client": "Cosmos", "account": "@cosmos",        "start_date": "2026-05-13"},
+    {"handle": "poke",          "client": "Poke",   "account": "@poke",          "start_date": None},
+    {"handle": "wabimaxxing",   "client": "Wabi",   "account": "@wabimaxxing",   "start_date": None},
+    {"handle": "gotwabi",       "client": "Wabi",   "account": "@gotwabi",       "start_date": None},
+    {"handle": "finthetourist", "client": "Wabi",   "account": "@finthetourist", "start_date": None},
+    {"handle": "yahoo",         "client": "Yahoo",  "account": "@yahoo",         "start_date": "2026-05-13"},
 ]
 
 POST_TYPE_MAP = {
@@ -162,8 +162,23 @@ def main():
 
     print(f"\nTotal scraped: {len(all_posts)} posts\n")
 
-    # Step 3: deduplicate
-    new_posts = [p for p in all_posts if p.get("shortCode") and p["shortCode"] not in existing]
+    # Step 3: deduplicate + apply per-account start dates
+    start_date_map = {a["account"]: a["start_date"] for a in ACCOUNTS}
+
+    def is_new(post):
+        if not post.get("shortCode"):
+            return False
+        if post["shortCode"] in existing:
+            return False
+        _, account = get_account_info(post.get("inputUrl"))
+        start_date = start_date_map.get(account)
+        if start_date:
+            post_date = (post.get("timestamp") or "")[:10]
+            if post_date < start_date:
+                return False
+        return True
+
+    new_posts = [p for p in all_posts if is_new(p)]
     print(f"New posts (not yet in Notion): {len(new_posts)}")
 
     per_account = Counter()
