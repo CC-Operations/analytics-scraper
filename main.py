@@ -5,11 +5,12 @@ import requests
 from datetime import datetime, timezone
 from collections import Counter
 
-# Config from environment variables
 DATABASE_URL = os.environ["DATABASE_URL"]
 APIFY_TOKEN = os.environ["APIFY_TOKEN"]
 
-ACCOUNTS = [
+# ── Account configs ───────────────────────────────────────────────────────────
+
+INSTAGRAM_ACCOUNTS = [
     {"handle": "cosmos",        "client": "Cosmos", "account": "@cosmos",        "start_date": "2026-05-13"},
     {"handle": "poke",          "client": "Poke",   "account": "@poke",          "start_date": None},
     {"handle": "wabimaxxing",   "client": "Wabi",   "account": "@wabimaxxing",   "start_date": None},
@@ -18,19 +19,27 @@ ACCOUNTS = [
     {"handle": "yahoo",         "client": "Yahoo",  "account": "@yahoo",         "start_date": "2026-05-13"},
 ]
 
+TIKTOK_ACCOUNTS = [
+    {"handle": "inspirethecosmos", "client": "Cosmos", "account": "@inspirethecosmos", "start_date": "2026-05-13"},
+]
+
+TWITTER_ACCOUNTS = [
+    {"handle": "thecosmos", "client": "Cosmos", "account": "@thecosmos", "start_date": "2026-05-13"},
+]
+
 POST_TYPE_MAP = {
     "Video": "Video", "GraphVideo": "Video",
     "Image": "Image", "GraphImage": "Image",
     "Sidecar": "Sidecar", "GraphSidecar": "Sidecar",
 }
 
+# ── Database ──────────────────────────────────────────────────────────────────
 
 def get_db():
     return psycopg2.connect(DATABASE_URL)
 
 
 def setup_db():
-    """Create tables if they don't exist."""
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("""
@@ -39,7 +48,7 @@ def setup_db():
                     client TEXT,
                     account TEXT,
                     platform TEXT DEFAULT 'instagram',
-                    shortcode TEXT UNIQUE,
+                    shortcode TEXT,
                     post_url TEXT,
                     caption TEXT,
                     post_type TEXT,
@@ -50,160 +59,221 @@ def setup_db():
                     date_scraped TIMESTAMPTZ DEFAULT NOW()
                 );
             """)
+            # Migrate: drop old single-column unique, add platform+shortcode unique
+            cur.execute("""
+                DO $$
+                BEGIN
+                    IF EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'posts_shortcode_key'
+                    ) THEN
+                        ALTER TABLE posts DROP CONSTRAINT posts_shortcode_key;
+                    END IF;
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_constraint WHERE conname = 'posts_platform_shortcode_key'
+                    ) THEN
+                        ALTER TABLE posts ADD CONSTRAINT posts_platform_shortcode_key UNIQUE (platform, shortcode);
+                    END IF;
+                END $$;
+            """)
         conn.commit()
     print("  Database ready.")
 
 
-def get_existing_shortcodes():
-    """Return a set of all shortcodes already in the database."""
+def get_existing_keys(platform):
+    """Return set of shortcodes already in DB for this platform."""
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT shortcode FROM posts WHERE platform = 'instagram'")
+            cur.execute("SELECT shortcode FROM posts WHERE platform = %s", (platform,))
             return {row[0] for row in cur.fetchall()}
 
 
-def scrape_batch(handles):
-    """Run apify/instagram-scraper for a batch of handles and return posts."""
-    direct_urls = [f"https://www.instagram.com/{h}/" for h in handles]
+def insert_post(platform, client, account, shortcode, post_url, caption,
+                post_type, views, likes, comments, posted_date):
+    with get_db() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO posts
+                    (client, account, platform, shortcode, post_url, caption,
+                     post_type, views, likes, comments, posted_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (platform, shortcode) DO NOTHING
+            """, (client, account, platform, shortcode, post_url,
+                  (caption or "")[:500], post_type, views, likes, comments, posted_date))
+        conn.commit()
 
+# ── Apify helper ──────────────────────────────────────────────────────────────
+
+def run_actor(actor_id, input_data, wait=300):
     run_resp = requests.post(
-        "https://api.apify.com/v2/acts/apify~instagram-scraper/runs",
-        params={"token": APIFY_TOKEN, "waitForFinish": 300},
-        json={"directUrls": direct_urls, "resultsType": "posts", "resultsLimit": 20},
+        f"https://api.apify.com/v2/acts/{actor_id}/runs",
+        params={"token": APIFY_TOKEN, "waitForFinish": wait},
+        json=input_data,
     )
     run_resp.raise_for_status()
     run = run_resp.json()["data"]
-    run_id = run["id"]
-    dataset_id = run["defaultDatasetId"]
-    status = run["status"]
+    run_id, dataset_id, status = run["id"], run["defaultDatasetId"], run["status"]
 
     while status not in ("SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"):
         time.sleep(10)
-        status_resp = requests.get(
+        status = requests.get(
             f"https://api.apify.com/v2/actor-runs/{run_id}",
             params={"token": APIFY_TOKEN},
-        )
-        status = status_resp.json()["data"]["status"]
+        ).json()["data"]["status"]
 
     if status != "SUCCEEDED":
         raise RuntimeError(f"Apify run {run_id} ended with status: {status}")
 
     items_resp = requests.get(
         f"https://api.apify.com/v2/datasets/{dataset_id}/items",
-        params={
-            "token": APIFY_TOKEN,
-            "fields": "shortCode,timestamp,url,caption,videoViewCount,likesCount,commentsCount,type,inputUrl",
-            "limit": 200,
-        },
+        params={"token": APIFY_TOKEN, "limit": 200},
     )
     items_resp.raise_for_status()
     return items_resp.json()
 
+# ── Instagram ─────────────────────────────────────────────────────────────────
 
-def get_account_info(input_url):
-    for acct in ACCOUNTS:
-        if acct["handle"] in (input_url or ""):
-            return acct["client"], acct["account"]
-    return "Unknown", "Unknown"
+def scrape_instagram():
+    print("\n── Instagram ──")
+    existing = get_existing_keys("instagram")
+    handles = [a["handle"] for a in INSTAGRAM_ACCOUNTS]
+    start_map = {a["account"]: a["start_date"] for a in INSTAGRAM_ACCOUNTS}
 
+    def acct_for(input_url):
+        for a in INSTAGRAM_ACCOUNTS:
+            if a["handle"] in (input_url or ""):
+                return a["client"], a["account"]
+        return "Unknown", "Unknown"
 
-def insert_post(post):
-    client, account = get_account_info(post.get("inputUrl"))
-    posted_date = (post.get("timestamp") or "")[:10] or None
-    views = post.get("videoViewCount") or post.get("playCount")
-    likes = post.get("likesCount", 0)
-    comments = post.get("commentsCount", 0)
-    post_type = POST_TYPE_MAP.get(post.get("type", ""), "Video")
-
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO posts
-                    (client, account, platform, shortcode, post_url, caption, post_type, views, likes, comments, posted_date)
-                VALUES (%s, %s, 'instagram', %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (shortcode) DO NOTHING
-            """, (
-                client,
-                account,
-                post["shortCode"],
-                post.get("url", ""),
-                (post.get("caption") or "")[:500],
-                post_type,
-                views if views and views > 0 else None,
-                likes if likes is not None and likes >= 0 else None,
-                comments,
-                posted_date,
-            ))
-        conn.commit()
-
-
-def main():
-    print(f"\n=== Instagram Analytics Run — {datetime.now(timezone.utc).isoformat()} ===\n")
-
-    # Step 1: setup DB schema
-    print("Setting up database...")
-    setup_db()
-
-    # Step 2: existing shortcodes
-    print("Fetching existing shortcodes from Postgres...")
-    existing = get_existing_shortcodes()
-    print(f"  {len(existing)} posts already in database\n")
-
-    # Step 3: scrape in two batches
-    print("Scraping Instagram accounts...")
-    handles = [a["handle"] for a in ACCOUNTS]
     all_posts = []
     for batch in [handles[:3], handles[3:]]:
         print(f"  Scraping: {', '.join(batch)}")
-        posts = scrape_batch(batch)
-        all_posts.extend(posts)
-        print(f"  → {len(posts)} posts returned")
-
-    print(f"\nTotal scraped: {len(all_posts)} posts\n")
-
-    # Step 4: deduplicate + apply per-account start dates
-    start_date_map = {a["account"]: a["start_date"] for a in ACCOUNTS}
-
-    def is_new(post):
-        if not post.get("shortCode"):
-            return False
-        if post["shortCode"] in existing:
-            return False
-        _, account = get_account_info(post.get("inputUrl"))
-        start_date = start_date_map.get(account)
-        if start_date:
-            post_date = (post.get("timestamp") or "")[:10]
-            if post_date < start_date:
-                return False
-        return True
-
-    new_posts = [p for p in all_posts if is_new(p)]
-    print(f"New posts (not yet in database): {len(new_posts)}")
-
-    per_account = Counter()
-    for p in new_posts:
-        _, acct = get_account_info(p.get("inputUrl"))
-        per_account[acct] += 1
-    for acct, n in sorted(per_account.items()):
-        print(f"  {acct}: {n}")
-
-    # Step 5: write to Postgres
-    if not new_posts:
-        print("\nNothing new to write. Done.")
-        return
-
-    print(f"\nWriting {len(new_posts)} new posts to Postgres...")
-    ok = fail = 0
-    for post in new_posts:
         try:
-            insert_post(post)
+            posts = run_actor("apify~instagram-scraper", {
+                "directUrls": [f"https://www.instagram.com/{h}/" for h in batch],
+                "resultsType": "posts",
+                "resultsLimit": 20,
+            })
+            all_posts.extend(posts)
+            print(f"  → {len(posts)} posts")
+        except Exception as e:
+            print(f"  ERROR: {e}")
+
+    ok = fail = 0
+    for post in all_posts:
+        sc = post.get("shortCode")
+        if not sc or sc in existing:
+            continue
+        client, account = acct_for(post.get("inputUrl"))
+        start = start_map.get(account)
+        post_date = (post.get("timestamp") or "")[:10]
+        if start and post_date < start:
+            continue
+        views = post.get("videoViewCount") or post.get("playCount")
+        try:
+            insert_post(
+                "instagram", client, account, sc,
+                post.get("url", ""), post.get("caption"),
+                POST_TYPE_MAP.get(post.get("type", ""), "Video"),
+                views if views and views > 0 else None,
+                post.get("likesCount"), post.get("commentsCount"),
+                post_date or None,
+            )
             ok += 1
         except Exception as e:
             fail += 1
-            print(f"  FAILED {post['shortCode']}: {e}")
+            print(f"  FAILED {sc}: {e}")
+    print(f"  ✓ {ok} written  ✗ {fail} failed")
 
-    print(f"\n✓ Written: {ok}  ✗ Failed: {fail}")
-    print(f"\n=== Run complete — {datetime.now(timezone.utc).isoformat()} ===\n")
+# ── TikTok ────────────────────────────────────────────────────────────────────
+
+def scrape_tiktok():
+    print("\n── TikTok ──")
+    existing = get_existing_keys("tiktok")
+
+    for acct in TIKTOK_ACCOUNTS:
+        print(f"  Scraping: {acct['handle']}")
+        try:
+            posts = run_actor("clockworks~free-tiktok-scraper", {
+                "profiles": [f"https://www.tiktok.com/@{acct['handle']}"],
+                "resultsPerPage": 20,
+            })
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            continue
+
+        ok = fail = 0
+        for post in posts:
+            sc = str(post.get("id") or "")
+            if not sc or sc in existing:
+                continue
+            post_date = None
+            ts = post.get("createTime")
+            if ts:
+                post_date = datetime.fromtimestamp(int(ts), tz=timezone.utc).strftime("%Y-%m-%d")
+            if acct["start_date"] and post_date and post_date < acct["start_date"]:
+                continue
+            try:
+                insert_post(
+                    "tiktok", acct["client"], acct["account"], sc,
+                    post.get("webVideoUrl", ""), post.get("text"),
+                    "Video",
+                    post.get("playCount"), post.get("diggCount"), post.get("commentCount"),
+                    post_date,
+                )
+                ok += 1
+            except Exception as e:
+                fail += 1
+                print(f"  FAILED {sc}: {e}")
+        print(f"  ✓ {ok} written  ✗ {fail} failed")
+
+# ── Twitter/X ─────────────────────────────────────────────────────────────────
+
+def scrape_twitter():
+    print("\n── Twitter/X ──")
+    existing = get_existing_keys("twitter")
+
+    for acct in TWITTER_ACCOUNTS:
+        print(f"  Scraping: {acct['handle']}")
+        try:
+            posts = run_actor("apidojo~tweet-scraper", {
+                "startUrls": [f"https://x.com/{acct['handle']}"],
+                "maxItems": 20,
+            })
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            continue
+
+        ok = fail = 0
+        for post in posts:
+            sc = str(post.get("id") or "")
+            if not sc or sc in existing:
+                continue
+            post_date = (post.get("createdAt") or "")[:10] or None
+            if acct["start_date"] and post_date and post_date < acct["start_date"]:
+                continue
+            try:
+                insert_post(
+                    "twitter", acct["client"], acct["account"], sc,
+                    post.get("url", ""), post.get("text"),
+                    "Tweet",
+                    post.get("viewCount"), post.get("likeCount"), post.get("replyCount"),
+                    post_date,
+                )
+                ok += 1
+            except Exception as e:
+                fail += 1
+                print(f"  FAILED {sc}: {e}")
+        print(f"  ✓ {ok} written  ✗ {fail} failed")
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    print(f"\n=== Analytics Run — {datetime.now(timezone.utc).isoformat()} ===")
+    setup_db()
+    scrape_instagram()
+    scrape_tiktok()
+    scrape_twitter()
+    print(f"\n=== Done — {datetime.now(timezone.utc).isoformat()} ===\n")
 
 
 if __name__ == "__main__":
