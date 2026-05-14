@@ -315,7 +315,7 @@ export default function ReportPage() {
         )}
 
         {/* ── Weekly Performance Line Chart ── */}
-        {showChart && weekData.length > 1 && (() => {
+        {showChart && weekData.length >= 1 && (() => {
           const W = 796, H = 140, PAD = { top: 16, right: 16, bottom: 26, left: 46 };
           const innerW = W - PAD.left - PAD.right;
           const innerH = H - PAD.top - PAD.bottom;
