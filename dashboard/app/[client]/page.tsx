@@ -454,7 +454,13 @@ export default function ClientPage() {
                 ← Creator Camp
               </Link>
             )}
-            <h1 className="text-3xl font-bold text-white tracking-tight">{clientName} Analytics</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold text-white tracking-tight">{clientName} Analytics</h1>
+              <span className="relative inline-flex" style={{ width: 10, height: 10, flexShrink: 0 }}>
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-60" style={{ background: PINK }} />
+                <span className="relative inline-flex rounded-full" style={{ width: 10, height: 10, background: PINK }} />
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {isPresenter ? (
