@@ -77,6 +77,7 @@ export default function ReportPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [priorPosts, setPriorPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
 
   // Options
   const clientName = client.charAt(0).toUpperCase() + client.slice(1);
@@ -185,6 +186,12 @@ export default function ReportPage() {
     const trendDir = slope > 0 ? "↑" : slope < 0 ? "↓" : "→";
     return { y0: intercept, y1: slope * (n - 1) + intercept, dir: trendDir, slope };
   })();
+
+  // ── Week drill-down: posts for selected week ──
+  const selectedWeekPosts = selectedWeek
+    ? [...posts, ...priorPosts].filter(p => toWeekKey(p.posted_date) === selectedWeek)
+        .sort((a, b) => (b.views ?? 0) - (a.views ?? 0))
+    : [];
 
   if (loading) {
     return (
@@ -348,7 +355,7 @@ export default function ReportPage() {
 
           const yTicks = [0, 0.5, 1].map(t => Math.round(t * maxV));
           const trendColor = trendPoints
-            ? trendPoints.slope > 0 ? "#4ade80" : trendPoints.slope < 0 ? "#f87171" : "rgba(255,255,255,0.3)"
+            ? trendPoints.slope > 0 ? "#4ade80" : trendPoints.slope < 0 ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.3)"
             : "rgba(255,255,255,0.3)";
 
           return (
@@ -383,18 +390,24 @@ export default function ReportPage() {
                 {weekData.map((w, i) => {
                   const isLast = i === n - 1;
                   const isPrior = w.isPrior;
+                  const isSelected = selectedWeek === w.week;
                   const r = isLast ? 6 : isPrior ? 2.5 : 4;
                   const opacity = isPrior ? 0.4 : 1;
                   const showLabel = n <= 10 || i === 0 || i % Math.ceil(n / 7) === 0 || isLast || i === firstCurrentIdx;
                   return (
-                    <g key={w.week}>
+                    <g key={w.week} style={{ cursor: "pointer" }}
+                      onClick={() => setSelectedWeek(isSelected ? null : w.week)}>
+                      {/* Hit target */}
+                      <circle cx={xOf(i)} cy={yOf(w.views)} r="14" fill="transparent" />
+                      {/* Selection ring */}
+                      {isSelected && <circle cx={xOf(i)} cy={yOf(w.views)} r="10" fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />}
                       {isLast && <circle cx={xOf(i)} cy={yOf(w.views)} r="12" fill={PINK} opacity="0.12" />}
                       {isLast && <circle cx={xOf(i)} cy={yOf(w.views)} r="8" fill={PINK} opacity="0.2" />}
-                      <circle cx={xOf(i)} cy={yOf(w.views)} r={r} fill={PINK} opacity={opacity} />
+                      <circle cx={xOf(i)} cy={yOf(w.views)} r={isSelected ? r + 1.5 : r} fill={isSelected ? "#fff" : PINK} opacity={isPrior ? 0.5 : 1} />
                       {showLabel && (
                         <text x={xOf(i)} y={H - 4} textAnchor="middle"
-                          fill={isLast ? "rgba(255,255,255,0.6)" : isPrior ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.4)"}
-                          fontSize="8" fontWeight={isLast ? "700" : "400"}>{w.week}</text>
+                          fill={isSelected ? "#fff" : isLast ? "rgba(255,255,255,0.6)" : isPrior ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.4)"}
+                          fontSize="8" fontWeight={isSelected || isLast ? "700" : "400"}>{w.week}</text>
                       )}
                     </g>
                   );
@@ -413,7 +426,54 @@ export default function ReportPage() {
                   <svg width="14" height="6"><line x1="0" y1="3" x2="14" y2="3" stroke={trendColor} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.6" /></svg>
                   <span style={{ color: "rgba(255,255,255,0.35)", fontSize: 9 }}>Trend</span>
                 </div>
+                <div style={{ marginLeft: "auto", color: "rgba(255,255,255,0.2)", fontSize: 9, fontStyle: "italic" }}>
+                  Click any dot to see that week
+                </div>
               </div>
+
+              {/* ── Week drill-down panel ── */}
+              {selectedWeek && selectedWeekPosts.length > 0 && (
+                <div className="no-print" style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: "rgba(255,255,255,0.6)", letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                      Week of {selectedWeek} — {selectedWeekPosts.length} post{selectedWeekPosts.length !== 1 ? "s" : ""}
+                    </div>
+                    <button onClick={() => setSelectedWeek(null)}
+                      style={{ background: "none", border: "none", color: "rgba(255,255,255,0.3)", fontSize: 13, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>✕</button>
+                  </div>
+                  {selectedWeekPosts.map((p, i) => {
+                    const plCfg = PLATFORM_CONFIG[p.platform];
+                    return (
+                      <div key={p.id} style={{
+                        display: "grid",
+                        gridTemplateColumns: "8px 1fr 60px 52px 52px 36px",
+                        gap: 8, alignItems: "center",
+                        padding: "6px 0",
+                        borderBottom: i < selectedWeekPosts.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none",
+                      }}>
+                        <div style={{ width: 6, height: 6, borderRadius: "50%", background: plCfg?.color ?? "#888" }} />
+                        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.7)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {p.caption || "—"}
+                        </div>
+                        <div style={{ textAlign: "right", fontSize: 11, fontWeight: 700 }}>{fmt(p.views)}</div>
+                        <div style={{ textAlign: "right", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{fmt(p.likes)}</div>
+                        <div style={{ textAlign: "right", fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{fmt(p.comments)}</div>
+                        <div style={{ textAlign: "right" }}>
+                          {p.post_url ? <a href={p.post_url} style={{ color: PINK, fontSize: 10 }}>↗</a> : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ display: "grid", gridTemplateColumns: "8px 1fr 60px 52px 52px 36px", gap: 8, marginTop: 8, paddingTop: 8, borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div />
+                    <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", fontWeight: 600 }}>TOTAL</div>
+                    <div style={{ textAlign: "right", fontSize: 11, fontWeight: 700, color: PINK }}>{fmt(selectedWeekPosts.reduce((s, p) => s + (p.views ?? 0), 0))}</div>
+                    <div style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>{fmt(selectedWeekPosts.reduce((s, p) => s + (p.likes ?? 0), 0))}</div>
+                    <div style={{ textAlign: "right", fontSize: 11, fontWeight: 600, color: "rgba(255,255,255,0.45)" }}>{fmt(selectedWeekPosts.reduce((s, p) => s + (p.comments ?? 0), 0))}</div>
+                    <div />
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
