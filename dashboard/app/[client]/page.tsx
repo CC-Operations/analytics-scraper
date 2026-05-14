@@ -15,11 +15,11 @@ const TIME_RANGES = ["1D", "1W", "1M", "3M", "All"];
 
 // Monthly retainer per client in USD
 const MONTHLY_RETAINER: Record<string, number> = {
-  cosmos: 0,
-  poke:   0,
-  wabi:   0,
+  cosmos: 40000,
+  poke:   35000,
+  wabi:   35000,
   yahoo:  0,
-  olive:  0,
+  olive:  15000,
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
