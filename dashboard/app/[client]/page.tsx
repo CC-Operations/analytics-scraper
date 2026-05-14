@@ -444,7 +444,7 @@ export default function ClientPage() {
           <button onClick={() => setShowExport(true)}
             className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all"
             style={{ backgroundColor: PINK, color: "white" }}>
-            ↗ Export Report
+            ↗ Export
           </button>
         </div>
 
