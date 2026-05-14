@@ -106,7 +106,7 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
   const cpi = (() => {
     if (retainer === 0 || summary.views === 0 || !summary.firstPost) return null;
     const monthsActive = Math.max(1, (Date.now() - new Date(summary.firstPost).getTime()) / (30 * 24 * 60 * 60 * 1000));
-    return (retainer * monthsActive) / summary.views;
+    return ((retainer * monthsActive) / summary.views) * 1000;
   })();
 
   return (
@@ -149,7 +149,7 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
             { label: "Posts", value: fmt(summary.posts) },
             { label: "Views", value: fmt(summary.views) },
             { label: "Likes", value: fmt(summary.likes) },
-            { label: "CPI", value: cpi != null ? `$${cpi.toFixed(2)}` : "—" },
+            { label: "CPM", value: cpi != null ? `$${cpi.toFixed(2)}` : "—" },
           ].map((s) => (
             <div key={s.label}>
               <p className="text-white/45 text-xs uppercase tracking-wider mb-1">{s.label}</p>
