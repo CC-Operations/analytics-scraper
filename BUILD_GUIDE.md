@@ -1,21 +1,19 @@
 # Creator Camp Analytics Dashboard — Build Guide
 
-## What We're Building
-A multi-client analytics dashboard for Creator Camp that:
+## What We Built
+A fully automated multi-client analytics dashboard for Creator Camp that:
 - Scrapes Instagram, TikTok, and Twitter nightly via Apify
-- Pulls ManyChat conversion data
 - Stores everything in a Postgres database on Railway
-- Displays in a Next.js dashboard on Vercel with per-client tabs
+- Displays in a Next.js dashboard on Vercel with per-client tabs, charts, and CPI tracking
 
 ---
 
 ## Architecture
 
 ```
-Apify (Instagram / TikTok / Twitter)
-ManyChat API
+Apify (Instagram / TikTok / Twitter scrapers)
         ↓
-Railway Python Scrapers (cron, nightly)
+Railway Python Cron Job (nightly 11pm EST)
         ↓
 Railway Postgres (analytics-db)
         ↓
@@ -24,185 +22,174 @@ Vercel Next.js Dashboard
 
 ---
 
-## Clients & Platforms
+## Clients & Accounts
 
-| Client | Instagram | TikTok | Twitter | ManyChat |
+| Client | Instagram | TikTok | Twitter | Retainer |
 |--------|-----------|--------|---------|----------|
-| Cosmos | @cosmos | TBD | TBD | ✓ |
-| Poke | @poke | — | — | — |
-| Wabi | @wabimaxxing, @gotwabi, @finthetourist | — | — | — |
-| Yahoo | @yahoo | TBD | TBD | — |
+| Cosmos | @cosmos | @inspirethecosmos | @thecosmos | $40,000/mo |
+| Poke | @poke | — | — | $35,000/mo |
+| Wabi | @wabimaxxing, @gotwabi, @finthetourist | — | — | $35,000/mo |
+| Yahoo | @yahoo | — | — | — |
+| Olive | @oliveapp | — | — | $15,000/mo |
 
 ---
 
-## Phase 1: Railway Postgres Setup ✅ (do this first)
+## Tech Stack
 
-1. Go to your Railway `content-analytics` project
-2. Click **+ New → Database → PostgreSQL**
-3. Name it `analytics-db`
-4. Click the Postgres service → **Connect** tab → copy `DATABASE_URL`
-5. Add `DATABASE_URL` as an environment variable on your Python scraper service
-   - Railway auto-injects it if both services are in the same project — verify it's there
+| Layer | Service | Cost |
+|-------|---------|------|
+| Scraper | Railway Pro (cron + Python) | $20/mo |
+| Database | Railway Postgres | included |
+| Data source | Apify Starter | $49/mo |
+| Frontend | Vercel Hobby | Free |
+| Repo | GitHub (public) | Free |
 
 ---
 
-## Phase 2: Update Instagram Scraper to Write to Postgres
+## Repository Structure
 
-**File:** `main.py`
+```
+apify-analytics-scraper/
+├── main.py                    # Python scraper (runs nightly on Railway)
+├── backfill_wabi.py           # One-off backfill script for Wabi IG history
+├── requirements.txt           # psycopg2-binary, requests
+├── BUILD_GUIDE.md             # This file
+├── PROJECT_STATE.md           # Current status checklist
+└── dashboard/                 # Next.js app (deployed to Vercel)
+    ├── app/
+    │   ├── page.tsx           # Agency HQ homepage
+    │   ├── globals.css        # Animations (fadeUp, pinkPulse)
+    │   ├── [client]/
+    │   │   └── page.tsx       # Per-client analytics page
+    │   └── api/
+    │       ├── posts/route.ts     # GET posts, PATCH exclude toggle
+    │       └── overview/route.ts  # Aggregated stats for HQ page
+    └── lib/
+        └── db.ts              # Postgres connection pool
+```
 
-Changes:
-- Add `psycopg2-binary` to `requirements.txt`
-- On startup, create the `posts` table if it doesn't exist
-- Replace Notion writes with Postgres inserts
-- Keep deduplication logic (check shortcode before inserting)
+---
 
-**Posts table schema:**
+## Database Schema
+
 ```sql
-CREATE TABLE IF NOT EXISTS posts (
-    id SERIAL PRIMARY KEY,
-    client TEXT,
-    account TEXT,
-    platform TEXT DEFAULT 'instagram',
-    shortcode TEXT UNIQUE,
-    post_url TEXT,
-    caption TEXT,
-    post_type TEXT,
-    views INTEGER,
-    likes INTEGER,
-    comments INTEGER,
-    posted_date DATE,
-    date_scraped TIMESTAMPTZ DEFAULT NOW()
-);
+posts (
+    id            SERIAL PRIMARY KEY,
+    client        TEXT,
+    account       TEXT,
+    platform      TEXT,           -- 'instagram', 'tiktok', 'twitter'
+    shortcode     TEXT,
+    post_url      TEXT,
+    caption       TEXT,
+    post_type     TEXT,           -- 'Video', 'Image', 'Carousel', 'Tweet'
+    views         INTEGER,
+    likes         INTEGER,
+    comments      INTEGER,
+    excluded      BOOLEAN DEFAULT FALSE,  -- toggle to exclude from analytics
+    posted_date   DATE,
+    date_scraped  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (platform, shortcode)
+)
 ```
 
 ---
 
-## Phase 3: Add TikTok Scraper
+## Scraper (main.py)
 
-**Apify actor:** `clockworks/free-tiktok-scraper`
+Runs as a Railway cron job at `0 4 * * *` (11pm EST).
 
-Input format:
-```json
-{
-  "profiles": ["https://www.tiktok.com/@<handle>"],
-  "resultsPerPage": 20
-}
+**Instagram** — Apify actor `apify~instagram-scraper`
+- Scrapes in two batches of accounts (50 posts per batch)
+- Filters posts before per-account `start_date` (where set)
+- Deduplicates via `ON CONFLICT (platform, shortcode) DO NOTHING`
+
+**TikTok** — Apify actor `clockworks~free-tiktok-scraper`
+- Currently: @inspirethecosmos for Cosmos only
+
+**Twitter** — Apify actor `apidojo~tweet-scraper`
+- Currently: @thecosmos for Cosmos only
+
+**To add a new account**, edit the relevant list in `main.py`:
+```python
+INSTAGRAM_ACCOUNTS = [
+    {"handle": "newhandle", "client": "ClientName", "account": "@newhandle", "start_date": "YYYY-MM-DD"},
+]
 ```
 
-Fields to extract: `id`, `webVideoUrl`, `text` (caption), `playCount`, `diggCount` (likes), `commentCount`, `createTime`, `authorMeta.name`
-
-Map to posts table: platform = `tiktok`
-
----
-
-## Phase 4: Add Twitter/X Scraper
-
-**Apify actor:** `apidojo/tweet-scraper` or `quacker/twitter-scraper`
-
-Input format:
-```json
-{
-  "startUrls": ["https://twitter.com/<handle>"],
-  "maxItems": 20
-}
-```
-
-Fields to extract: `id`, `url`, `text`, `retweetCount`, `likeCount`, `replyCount`, `createdAt`, `author.userName`
-
-Map to posts table: platform = `twitter`, views = impressions if available
-
----
-
-## Phase 5: Add ManyChat Integration
-
-**ManyChat API docs:** https://api.manychat.com
-
-Pull subscriber growth and flow conversion data daily.
-
-**Conversions table schema:**
-```sql
-CREATE TABLE IF NOT EXISTS conversions (
-    id SERIAL PRIMARY KEY,
-    client TEXT,
-    platform TEXT DEFAULT 'manychat',
-    event_type TEXT,
-    count INTEGER,
-    date DATE,
-    date_scraped TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
----
-
-## Phase 6: Build Next.js Dashboard on Vercel
-
-### Setup
+**To run manually:**
 ```bash
-npx create-next-app@latest analytics-dashboard
-cd analytics-dashboard
-npm install @vercel/postgres recharts lucide-react
+railway run python3 main.py
 ```
 
-### Page structure
+**To backfill Wabi historical data:**
+```bash
+railway run python3 backfill_wabi.py
 ```
-/app
-  /page.tsx              → redirects to /cosmos
-  /[client]/page.tsx     → per-client dashboard
-  /api/posts/route.ts    → fetches posts from Postgres
-  /api/conversions/route.ts
+*(Requires Apify account to be active — will 403 if usage cap hit)*
+
+---
+
+## Dashboard (Next.js)
+
+### Agency HQ (`/`)
+- Animated count-up stats: Total Posts, Total Views, Total Likes
+- Client cards with Posts, Views, Likes, CPI per client
+- Hover glow on stat cards
+- Links to each client's page
+
+### Client Page (`/[client]`)
+- **Client tabs**: Cosmos, Poke, Wabi, Yahoo, Olive
+- **Platform tabs**: Overview, Instagram, TikTok (soon), Twitter (soon), ManyChat (soon)
+- **All Time / This Month toggle**: switches stats, chart, and CPI
+- **Stat cards**: Posts, Total Views, Total Likes, Avg Views
+- **Views by Week chart**: weekly bar chart in pink
+- **CPI card**: cost per impression (retainer × months active ÷ total views), with month-over-month arrow
+- **Posts table**: sortable, with exclude/include toggle per post
+
+### CPI Calculation
 ```
+All Time CPI  = (monthly_retainer × months_tracked) ÷ total_views
+This Month CPI = (retainer × days_elapsed/days_in_month) ÷ views_from_posts_this_month
+```
+Arrow (↓ green / ↑ red) compares current month vs previous month.
 
-### Client tabs
-- Cosmos
-- Poke
-- Wabi
-- Yahoo
-
-### Per-client sections
-- **Overview**: total posts, total views, total likes this month
-- **Instagram**: table of recent posts with views/likes/comments
-- **TikTok**: table of recent posts
-- **Twitter**: table of recent posts
-- **ManyChat**: conversion counts by flow
-
-### Deploy to Vercel
-1. Push Next.js app to a new GitHub repo
-2. Connect repo to Vercel
-3. Add `DATABASE_URL` (from Railway) as a Vercel environment variable
-4. Deploy
+### Exclude Toggle
+Each post has a pink/grey toggle. Excluded posts:
+- Are faded out in the table
+- Are removed from all stat calculations and charts
+- Persist to the database via PATCH `/api/posts`
 
 ---
 
 ## Environment Variables
 
-| Variable | Used by | Value |
+| Variable | Used by | Notes |
 |----------|---------|-------|
-| `NOTION_TOKEN` | Railway scraper | from Notion integration |
-| `NOTION_DATABASE_ID` | Railway scraper | `e28bd1e2c1794574816fde368553c71a` |
-| `APIFY_TOKEN` | Railway scraper | from Apify account |
-| `DATABASE_URL` | Railway scraper + Vercel | from Railway Postgres |
-| `MANYCHAT_TOKEN` | Railway scraper | from ManyChat account |
+| `DATABASE_URL` | Railway scraper + Vercel | Railway Postgres public URL |
+| `APIFY_TOKEN` | Railway scraper | From apify.com → Settings → API tokens |
 
 ---
 
-## Railway Cron Schedule
+## Deployment
 
-Set on each scraper service under **Settings → Cron Schedule**:
-- Instagram: `0 4 * * *` (11pm EST)
-- TikTok: `0 4 * * *`
-- Twitter: `0 4 * * *`
-- ManyChat: `0 4 * * *`
+### Railway (scraper + database)
+- Project: `content-analytics`
+- Cron schedule: `0 4 * * *` (Settings → Cron Schedule on the scraper service)
+- Deploy: `railway up` from repo root, or push to GitHub (auto-deploy if connected)
+
+### Vercel (dashboard)
+- Repo: `CC-Operations/analytics-scraper` (must be public for Hobby plan)
+- Root directory: `dashboard`
+- Env var: `DATABASE_URL` (Railway public URL, not internal)
+- Auto-deploys on push to `main`
 
 ---
 
-## Current Status
+## Pending / Future Work
 
-- [x] Instagram scraper running on Railway
-- [x] Writing to Notion
-- [ ] Add Postgres to Railway (Phase 1)
-- [ ] Migrate Instagram scraper to Postgres (Phase 2)
-- [ ] Add TikTok scraper (Phase 3)
-- [ ] Add Twitter scraper (Phase 4)
-- [ ] Add ManyChat integration (Phase 5)
-- [ ] Build Next.js dashboard (Phase 6)
-- [ ] Deploy to Vercel (Phase 6)
+- [ ] Wabi historical backfill to Dec 24, 2025 (blocked on Apify upgrade)
+- [ ] TikTok + Twitter for Poke, Wabi, Yahoo, Olive
+- [ ] ManyChat integration
+- [ ] CSV export per client
+- [ ] Weekly Slack bot (Friday performance summary)
+- [ ] Resolve CPI $0.6 formula from team case study
