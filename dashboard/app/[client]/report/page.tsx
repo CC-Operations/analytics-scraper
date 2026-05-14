@@ -205,10 +205,10 @@ export default function ReportPage() {
     <>
       <style>{`
         @media print {
-          @page { margin: 0.45in; size: letter; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #000 !important; }
+          @page { margin: 0; size: letter; }
+          html, body { background: #000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .no-print { display: none !important; }
-          html, body { background: #000 !important; }
+          .print-root { padding: 0.45in 0.52in !important; }
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body { background: #000; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -249,7 +249,7 @@ export default function ReportPage() {
       </div>
 
       {/* ── Report Content ── */}
-      <div style={{ background: "#000", color: "#fff", minHeight: "100vh", padding: "36px 52px 40px" }}>
+      <div className="print-root" style={{ background: "#000", color: "#fff", minHeight: "100vh", padding: "36px 52px 40px" }}>
 
         {/* ── Header ── */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 28, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 24 }}>
