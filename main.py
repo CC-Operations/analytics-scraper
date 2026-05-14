@@ -306,6 +306,13 @@ def main():
     scrape_instagram()
     scrape_tiktok()
     scrape_twitter()
+    # Sync to Notion after scraping (only if token is set)
+    if os.environ.get("NOTION_TOKEN") or os.environ.get("NOTION_API_KEY"):
+        try:
+            from sync_notion import sync as sync_notion
+            sync_notion()
+        except Exception as e:
+            print(f"  Notion sync error: {e}")
     print(f"\n=== Done — {datetime.now(timezone.utc).isoformat()} ===\n")
 
 
