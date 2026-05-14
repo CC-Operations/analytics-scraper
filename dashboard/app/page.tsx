@@ -53,6 +53,7 @@ type Row = {
   likes: number;
   comments: number;
   month_views: number;
+  first_post: string | null;
   last_post: string | null;
 };
 
@@ -61,7 +62,7 @@ type ClientSummary = {
   posts: number;
   views: number;
   likes: number;
-  monthViews: number;
+  firstPost: string | null;
   platforms: string[];
 };
 
@@ -102,13 +103,11 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
   const [hovered, setHovered] = useState(false);
 
   const retainer = MONTHLY_RETAINER[summary.client.toLowerCase()] ?? 0;
-  const now = new Date();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysElapsed = now.getDate();
-  const proratedRetainer = retainer * (daysElapsed / daysInMonth);
-  const cpi = retainer > 0 && summary.monthViews > 0
-    ? proratedRetainer / summary.monthViews
-    : null;
+  const cpi = (() => {
+    if (retainer === 0 || summary.views === 0 || !summary.firstPost) return null;
+    const monthsActive = Math.max(1, (Date.now() - new Date(summary.firstPost).getTime()) / (30 * 24 * 60 * 60 * 1000));
+    return (retainer * monthsActive) / summary.views;
+  })();
 
   return (
     <Link href={`/${summary.client.toLowerCase()}`}
@@ -187,7 +186,7 @@ export default function OverviewPage() {
       posts: rows.reduce((s, r) => s + r.posts, 0),
       views: rows.reduce((s, r) => s + r.views, 0),
       likes: rows.reduce((s, r) => s + r.likes, 0),
-      monthViews: rows.reduce((s, r) => s + (r.month_views ?? 0), 0),
+      firstPost: rows.map(r => r.first_post).filter(Boolean).sort()[0] ?? null,
       platforms: [...new Set(rows.map((r) => r.platform))],
     };
   });

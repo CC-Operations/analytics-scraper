@@ -53,6 +53,8 @@ type Post = {
   excluded: boolean;
 };
 
+type ViewMode = "all" | "month";
+
 function fmt(n: number | null) {
   if (n == null) return "—";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -76,6 +78,32 @@ function filterByRange(posts: Post[], range: string): Post[] {
   return posts.filter((p) => p.posted_date && new Date(cleanDate(p.posted_date)) >= cutoff);
 }
 
+function filterByMonth(posts: Post[]): Post[] {
+  const ym = new Date().toISOString().slice(0, 7);
+  return posts.filter((p) => p.posted_date && cleanDate(p.posted_date).slice(0, 7) === ym);
+}
+
+// ── View Mode Toggle ──────────────────────────────────────────────────────────
+
+function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+  return (
+    <div className="flex items-center gap-1 bg-white/[0.05] rounded-full p-1">
+      {([["all", "All Time"], ["month", "This Month"]] as [ViewMode, string][]).map(([val, label]) => (
+        <button key={val} onClick={() => onChange(val)}
+          className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200"
+          style={mode === val
+            ? { backgroundColor: PINK, color: "white" }
+            : { color: "rgba(255,255,255,0.4)" }
+          }>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Stat Card ─────────────────────────────────────────────────────────────────
+
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:border-white/10 transition-colors">
@@ -84,6 +112,8 @@ function StatCard({ label, value }: { label: string; value: string | number }) {
     </div>
   );
 }
+
+// ── Time Filter ───────────────────────────────────────────────────────────────
 
 function TimeFilter({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
@@ -102,17 +132,18 @@ function TimeFilter({ value, onChange }: { value: string; onChange: (v: string) 
   );
 }
 
+// ── Views Chart ───────────────────────────────────────────────────────────────
+
 function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange: string; onTimeChange: (v: string) => void }) {
   const filtered = filterByRange(data, timeRange);
 
-  // Aggregate by week for clean, readable bars
   const byWeek: Record<string, number> = {};
   for (const p of filtered) {
     if (!p.posted_date) continue;
     const d = new Date(cleanDate(p.posted_date));
     const weekStart = new Date(d);
     weekStart.setDate(d.getDate() - d.getDay());
-    const key = weekStart.toISOString().slice(5, 10); // "MM-DD"
+    const key = weekStart.toISOString().slice(5, 10);
     byWeek[key] = (byWeek[key] ?? 0) + (p.views ?? 0);
   }
   const chartData = Object.keys(byWeek).sort().map((k) => ({ week: k, Views: byWeek[k] }));
@@ -144,51 +175,78 @@ function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange
   );
 }
 
-function CPMStat({ data, clientKey }: { data: Post[]; clientKey: string }) {
-  const retainer = MONTHLY_RETAINER[clientKey] ?? 0;
+// ── CPI Stat ──────────────────────────────────────────────────────────────────
 
+function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
+  allPosts: Post[];
+  monthPosts: Post[];
+  clientKey: string;
+  mode: ViewMode;
+}) {
+  const retainer = MONTHLY_RETAINER[clientKey] ?? 0;
   if (retainer === 0) {
     return <div className="flex items-center justify-center h-full text-white/20 text-sm">No retainer set</div>;
   }
 
-  // Group views by month
-  const byMonth: Record<string, number> = {};
-  for (const post of data) {
-    if (!post.posted_date || !post.views) continue;
-    const month = cleanDate(post.posted_date).slice(0, 7);
-    byMonth[month] = (byMonth[month] ?? 0) + post.views;
+  let cpi: number | null = null;
+  let subtitle = "";
+  let improved: boolean | null = null;
+  let pctChange: number | null = null;
+
+  if (mode === "all") {
+    // All-time CPI: total spend (retainer × months active) ÷ total views
+    const totalViews = allPosts.reduce((s, p) => s + (p.views ?? 0), 0);
+    const dates = allPosts.map(p => cleanDate(p.posted_date)).filter(Boolean).sort();
+    if (dates.length > 0 && totalViews > 0) {
+      const earliest = new Date(dates[0]);
+      const monthsActive = Math.max(1, (Date.now() - earliest.getTime()) / (30 * 24 * 60 * 60 * 1000));
+      const totalSpend = retainer * monthsActive;
+      cpi = totalSpend / totalViews;
+      subtitle = `per view · ${Math.round(monthsActive)} mo tracked`;
+    }
+    // Month-over-month trend for the arrow
+    const byMonth: Record<string, number> = {};
+    for (const p of allPosts) {
+      if (!p.posted_date || !p.views) continue;
+      const m = cleanDate(p.posted_date).slice(0, 7);
+      byMonth[m] = (byMonth[m] ?? 0) + p.views;
+    }
+    const mkeys = Object.keys(byMonth).sort();
+    if (mkeys.length >= 2) {
+      const cur = mkeys[mkeys.length - 1];
+      const prev = mkeys[mkeys.length - 2];
+      const now = new Date();
+      const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      const effectiveRetainer = (m: string) =>
+        m === now.toISOString().slice(0, 7) ? retainer * (now.getDate() / daysInMonth) : retainer;
+      const curCPI = effectiveRetainer(cur) / byMonth[cur];
+      const prevCPI = effectiveRetainer(prev) / byMonth[prev];
+      improved = curCPI < prevCPI;
+      pctChange = Math.abs(((curCPI - prevCPI) / prevCPI) * 100);
+    }
+  } else {
+    // This month: prorated retainer ÷ month views
+    const monthViews = monthPosts.reduce((s, p) => s + (p.views ?? 0), 0);
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const proratedRetainer = retainer * (now.getDate() / daysInMonth);
+    if (monthViews > 0) {
+      cpi = proratedRetainer / monthViews;
+      subtitle = `per view · ${now.toLocaleString("default", { month: "long" })}`;
+    }
   }
 
-  const months = Object.keys(byMonth).sort();
-  if (months.length === 0) {
+  if (cpi === null) {
     return <div className="flex items-center justify-center h-full text-white/20 text-sm">No data yet</div>;
   }
 
-  const currentMonth = months[months.length - 1];
-  const prevMonth = months.length > 1 ? months[months.length - 2] : null;
-  // Prorate retainer for the current month so mid-month comparisons are fair
-  const now = new Date();
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const daysElapsed = now.getDate();
-  const thisYearMonth = now.toISOString().slice(0, 7);
-
-  const effectiveRetainer = (month: string) =>
-    month === thisYearMonth ? retainer * (daysElapsed / daysInMonth) : retainer;
-
-  const currentCPI = effectiveRetainer(currentMonth) / byMonth[currentMonth];
-  const prevCPI = prevMonth ? effectiveRetainer(prevMonth) / byMonth[prevMonth] : null;
-
-  // Lower CPI = better (more views per dollar)
-  const improved = prevCPI !== null ? currentCPI < prevCPI : null;
-  const pctChange = prevCPI !== null ? Math.abs(((currentCPI - prevCPI) / prevCPI) * 100) : null;
-
-  const fmtCPI = (v: number) => `$${v.toFixed(2)}`;
+  const fmtCPI = (v: number) => v >= 10 ? `$${v.toFixed(0)}` : v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`;
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
       <p className="text-white/55 text-xs uppercase tracking-widest font-medium">CPI</p>
-      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPI(currentCPI)}</p>
-      <p className="text-white/20 text-xs">per view · {new Date().toLocaleString("default", { month: "long" })}</p>
+      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPI(cpi)}</p>
+      <p className="text-white/30 text-xs">{subtitle}</p>
       {improved !== null && pctChange !== null && (
         <div className="flex items-center gap-2 mt-1">
           <span className="text-2xl leading-none" style={{
@@ -202,12 +260,14 @@ function CPMStat({ data, clientKey }: { data: Post[]; clientKey: string }) {
           </span>
         </div>
       )}
-      {improved === null && (
+      {mode === "all" && improved === null && (
         <p className="text-white/15 text-xs mt-1">More data next month</p>
       )}
     </div>
   );
 }
+
+// ── Toggle (exclude/include) ──────────────────────────────────────────────────
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
   return (
@@ -219,6 +279,8 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void 
     </button>
   );
 }
+
+// ── Posts Table ───────────────────────────────────────────────────────────────
 
 function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number, excluded: boolean) => void }) {
   if (posts.length === 0)
@@ -277,6 +339,8 @@ function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number,
   );
 }
 
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function ClientPage() {
   const { client } = useParams<{ client: string }>();
   const clientName = client.charAt(0).toUpperCase() + client.slice(1);
@@ -285,6 +349,7 @@ export default function ClientPage() {
   const [loading, setLoading] = useState(true);
   const [activePlatform, setActivePlatform] = useState("Overview");
   const [chartRange1, setChartRange1] = useState("All");
+  const [viewMode, setViewMode] = useState<ViewMode>("all");
 
   useEffect(() => {
     setLoading(true);
@@ -297,10 +362,19 @@ export default function ClientPage() {
 
   const availablePlatforms = new Set(posts.map((p) => p.platform));
   const filtered = activePlatform === "Overview" ? posts : posts.filter((p) => p.platform === activePlatform.toLowerCase());
-  const counted = filtered.filter((p) => !p.excluded);
-  const totalViews = counted.reduce((s, p) => s + (p.views ?? 0), 0);
-  const totalLikes = counted.reduce((s, p) => s + (p.likes ?? 0), 0);
-  const avgViews = counted.length > 0 ? Math.round(totalViews / counted.length) : 0;
+
+  // All counted posts (no date filter) — always used for CPI all-time
+  const allCounted = filtered.filter((p) => !p.excluded);
+
+  // This month's counted posts
+  const monthCounted = filterByMonth(allCounted);
+
+  // What the stats + chart show depends on the toggle
+  const displayCounted = viewMode === "all" ? allCounted : monthCounted;
+
+  const totalViews = displayCounted.reduce((s, p) => s + (p.views ?? 0), 0);
+  const totalLikes = displayCounted.reduce((s, p) => s + (p.likes ?? 0), 0);
+  const avgViews = displayCounted.length > 0 ? Math.round(totalViews / displayCounted.length) : 0;
 
   async function handleToggle(id: number, newExcluded: boolean) {
     setPosts((prev) => prev.map((p) => p.id === id ? { ...p, excluded: newExcluded } : p));
@@ -339,30 +413,33 @@ export default function ClientPage() {
           ))}
         </div>
 
-        {/* Platform tabs */}
-        <div className="flex gap-2 mb-8 flex-wrap">
-          {PLATFORMS.map((p) => {
-            const isAvailable = p === "Overview" || availablePlatforms.has(p.toLowerCase());
-            const isActive = activePlatform === p;
-            const isComing = !isAvailable;
-            return (
-              <button key={p} onClick={() => !isComing && setActivePlatform(p)} disabled={isComing}
-                className="px-4 py-2 rounded-full text-xs font-medium transition-all flex items-center gap-2 border"
-                style={isActive
-                  ? { borderColor: "rgba(255,255,255,0.15)", backgroundColor: "rgba(255,255,255,0.08)", color: "white" }
-                  : isComing
-                  ? { borderColor: "transparent", color: "rgba(255,255,255,0.15)", cursor: "not-allowed" }
-                  : { borderColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }
-                }>
-                {p !== "Overview" && (
-                  <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: isAvailable ? PLATFORM_COLORS[p.toLowerCase()] : "rgba(255,255,255,0.1)" }} />
-                )}
-                {p}
-                {isComing && <span className="text-[10px] opacity-50">soon</span>}
-              </button>
-            );
-          })}
+        {/* Platform tabs + View Mode Toggle */}
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+          <div className="flex gap-2 flex-wrap">
+            {PLATFORMS.map((p) => {
+              const isAvailable = p === "Overview" || availablePlatforms.has(p.toLowerCase());
+              const isActive = activePlatform === p;
+              const isComing = !isAvailable;
+              return (
+                <button key={p} onClick={() => !isComing && setActivePlatform(p)} disabled={isComing}
+                  className="px-4 py-2 rounded-full text-xs font-medium transition-all flex items-center gap-2 border"
+                  style={isActive
+                    ? { borderColor: "rgba(255,255,255,0.15)", backgroundColor: "rgba(255,255,255,0.08)", color: "white" }
+                    : isComing
+                    ? { borderColor: "transparent", color: "rgba(255,255,255,0.15)", cursor: "not-allowed" }
+                    : { borderColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }
+                  }>
+                  {p !== "Overview" && (
+                    <span className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                      style={{ backgroundColor: isAvailable ? PLATFORM_COLORS[p.toLowerCase()] : "rgba(255,255,255,0.1)" }} />
+                  )}
+                  {p}
+                  {isComing && <span className="text-[10px] opacity-50">soon</span>}
+                </button>
+              );
+            })}
+          </div>
+          <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         </div>
 
         {loading ? (
@@ -371,7 +448,7 @@ export default function ClientPage() {
           <>
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-              <StatCard label="Posts" value={counted.length} />
+              <StatCard label="Posts" value={displayCounted.length} />
               <StatCard label="Total Views" value={fmt(totalViews)} />
               <StatCard label="Total Likes" value={fmt(totalLikes)} />
               <StatCard label="Avg Views" value={fmt(avgViews)} />
@@ -381,17 +458,17 @@ export default function ClientPage() {
             {activePlatform === "Overview" && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
-                  <ViewsChart data={counted} timeRange={chartRange1} onTimeChange={setChartRange1} />
+                  <ViewsChart data={displayCounted} timeRange={chartRange1} onTimeChange={setChartRange1} />
                 </div>
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
-                  <CPMStat data={counted} clientKey={client} />
+                  <CPIStat allPosts={allCounted} monthPosts={monthCounted} clientKey={client} mode={viewMode} />
                 </div>
               </div>
             )}
 
-            {activePlatform !== "Overview" && counted.length > 0 && (
+            {activePlatform !== "Overview" && displayCounted.length > 0 && (
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 mb-8">
-                <ViewsChart data={counted} timeRange={chartRange1} onTimeChange={setChartRange1} />
+                <ViewsChart data={displayCounted} timeRange={chartRange1} onTimeChange={setChartRange1} />
               </div>
             )}
 
@@ -401,7 +478,7 @@ export default function ClientPage() {
             </div>
 
             <p className="text-white/15 text-xs mt-4 text-right">
-              {counted.length} posts counted · Updated nightly 11pm EST
+              {allCounted.length} posts counted · Updated nightly 11pm EST
             </p>
           </>
         )}
