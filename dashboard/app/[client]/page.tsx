@@ -11,7 +11,16 @@ import {
 const PINK = "#E82E6A";
 const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo", "Olive"];
 const PLATFORMS = ["Overview", "Instagram", "TikTok", "Twitter", "ManyChat"];
-const TIME_RANGES = ["1D", "5D", "1M", "6M", "YTD", "All"];
+const TIME_RANGES = ["1D", "1W", "1M", "3M", "All"];
+
+// Monthly retainer per client in USD
+const MONTHLY_RETAINER: Record<string, number> = {
+  cosmos: 0,
+  poke:   0,
+  wabi:   0,
+  yahoo:  0,
+  olive:  0,
+};
 
 const PLATFORM_COLORS: Record<string, string> = {
   instagram: "#E82E6A",
@@ -61,10 +70,9 @@ function filterByRange(posts: Post[], range: string): Post[] {
   const now = new Date();
   const cutoff = new Date();
   if (range === "1D") cutoff.setDate(now.getDate() - 1);
-  else if (range === "5D") cutoff.setDate(now.getDate() - 5);
+  else if (range === "1W") cutoff.setDate(now.getDate() - 7);
   else if (range === "1M") cutoff.setMonth(now.getMonth() - 1);
-  else if (range === "6M") cutoff.setMonth(now.getMonth() - 6);
-  else if (range === "YTD") { cutoff.setMonth(0); cutoff.setDate(1); }
+  else if (range === "3M") cutoff.setMonth(now.getMonth() - 3);
   return posts.filter((p) => p.posted_date && new Date(cleanDate(p.posted_date)) >= cutoff);
 }
 
@@ -122,8 +130,8 @@ function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange
                   <stop offset="95%" stopColor={PINK} stopOpacity={0} />
                 </linearGradient>
                 <linearGradient id="likesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#ffffff" stopOpacity={0.15} />
-                  <stop offset="95%" stopColor="#ffffff" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#00CFFF" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#00CFFF" stopOpacity={0} />
                 </linearGradient>
               </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
@@ -136,7 +144,7 @@ function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange
               />
               <Legend wrapperStyle={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }} />
               <Area type="monotone" dataKey="Views" stroke={PINK} strokeWidth={2} fill="url(#viewsGrad)" dot={false} />
-              <Area type="monotone" dataKey="Likes" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} fill="url(#likesGrad)" dot={false} />
+              <Area type="monotone" dataKey="Likes" stroke="#00CFFF" strokeWidth={1.5} fill="url(#likesGrad)" dot={false} />
             </AreaChart>
           </ResponsiveContainer>
         )}
@@ -144,39 +152,50 @@ function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange
   );
 }
 
-function PlatformBreakdown({ data, timeRange, onTimeChange }: { data: Post[]; timeRange: string; onTimeChange: (v: string) => void }) {
+function CPMChart({ data, clientKey, timeRange, onTimeChange }: { data: Post[]; clientKey: string; timeRange: string; onTimeChange: (v: string) => void }) {
+  const retainer = MONTHLY_RETAINER[clientKey] ?? 0;
   const filtered = filterByRange(data, timeRange);
-  const byPlatform = ["instagram", "tiktok", "twitter"].map((p) => {
-    const posts = filtered.filter((d) => d.platform === p);
-    return {
-      name: p.charAt(0).toUpperCase() + p.slice(1),
-      Views: posts.reduce((s, d) => s + (d.views ?? 0), 0),
-      Posts: posts.length,
-    };
-  }).filter((p) => p.Posts > 0);
+
+  // Group total views by month
+  const byMonth: Record<string, number> = {};
+  for (const post of filtered) {
+    if (!post.posted_date || !post.views) continue;
+    const month = cleanDate(post.posted_date).slice(0, 7);
+    byMonth[month] = (byMonth[month] ?? 0) + post.views;
+  }
+
+  const chartData = Object.entries(byMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([month, views]) => ({
+      month: month.slice(5), // "04", "05"
+      CPM: retainer > 0 && views > 0 ? parseFloat(((retainer / views) * 1000).toFixed(2)) : 0,
+    }));
 
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-white/40 text-xs uppercase tracking-widest font-medium">Performance by Platform</p>
+        <div>
+          <p className="text-white/40 text-xs uppercase tracking-widest font-medium">CPM</p>
+          <p className="text-white/20 text-[10px] mt-0.5">$ per 1K views · retainer ÷ monthly views</p>
+        </div>
         <TimeFilter value={timeRange} onChange={onTimeChange} />
       </div>
-      {byPlatform.length === 0
+      {retainer === 0
+        ? <div className="flex items-center justify-center h-40 text-white/20 text-sm">Set retainer in MONTHLY_RETAINER to see CPM</div>
+        : chartData.length === 0
         ? <div className="flex items-center justify-center h-40 text-white/20 text-sm">No data for this period</div>
         : (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={byPlatform} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
+            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="name" tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmt(v)} />
+              <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
               <Tooltip
                 contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
                 labelStyle={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}
-                formatter={(v: number) => fmt(v)}
+                formatter={(v: number) => [`$${v}`, "CPM"]}
               />
-              <Legend wrapperStyle={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }} />
-              <Bar dataKey="Views" fill={PINK} radius={[6, 6, 0, 0]} />
-              <Bar dataKey="Posts" fill="rgba(255,255,255,0.12)" radius={[6, 6, 0, 0]} />
+              <Bar dataKey="CPM" fill={PINK} radius={[6, 6, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         )}
@@ -360,7 +379,7 @@ export default function ClientPage() {
                   <ViewsChart data={counted} timeRange={chartRange1} onTimeChange={setChartRange1} />
                 </div>
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
-                  <PlatformBreakdown data={posts.filter(p => !p.excluded)} timeRange={chartRange2} onTimeChange={setChartRange2} />
+                  <CPMChart data={counted} clientKey={client} timeRange={chartRange2} onTimeChange={setChartRange2} />
                 </div>
               </div>
             )}
