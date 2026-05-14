@@ -13,6 +13,15 @@ const PLATFORM_COLORS: Record<string, string> = {
   manychat: "#7b61ff",
 };
 
+// Monthly retainer per client in USD (must match [client]/page.tsx)
+const MONTHLY_RETAINER: Record<string, number> = {
+  cosmos: 40000,
+  poke:   35000,
+  wabi:   35000,
+  yahoo:  0,
+  olive:  15000,
+};
+
 function useCountUp(target: number, duration = 1200, started = false) {
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -43,6 +52,7 @@ type Row = {
   views: number;
   likes: number;
   comments: number;
+  month_views: number;
   last_post: string | null;
 };
 
@@ -51,11 +61,13 @@ type ClientSummary = {
   posts: number;
   views: number;
   likes: number;
+  monthViews: number;
   platforms: string[];
 };
 
 function AnimatedStat({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
   const [started, setStarted] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,9 +82,17 @@ function AnimatedStat({ label, value, delay = 0 }: { label: string; value: numbe
 
   return (
     <div ref={ref}
-      className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-8 hover:border-white/10 transition-colors"
-      style={{ animation: `fadeUp 0.5s ease ${delay}ms forwards, pinkPulse 3s ease-in-out ${delay}ms infinite`, opacity: 0 }}>
-      <p className="text-white/30 text-xs uppercase tracking-widest mb-3 font-medium">{label}</p>
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      className="rounded-2xl p-8 border transition-all duration-300 cursor-default"
+      style={{
+        animation: `fadeUp 0.5s ease ${delay}ms forwards, pinkPulse 3s ease-in-out ${delay}ms infinite`,
+        opacity: 0,
+        backgroundColor: hovered ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.03)",
+        borderColor: hovered ? "rgba(232,46,106,0.4)" : "rgba(255,255,255,0.06)",
+        boxShadow: hovered ? "0 0 40px 6px rgba(232,46,106,0.18)" : "none",
+      }}>
+      <p className="text-white/55 text-xs uppercase tracking-widest mb-3 font-medium">{label}</p>
       <p className="text-4xl font-bold text-white tabular-nums">{fmt(count)}</p>
     </div>
   );
@@ -80,6 +100,15 @@ function AnimatedStat({ label, value, delay = 0 }: { label: string; value: numbe
 
 function ClientCard({ summary, index }: { summary: ClientSummary; index: number }) {
   const [hovered, setHovered] = useState(false);
+
+  const retainer = MONTHLY_RETAINER[summary.client.toLowerCase()] ?? 0;
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysElapsed = now.getDate();
+  const proratedRetainer = retainer * (daysElapsed / daysInMonth);
+  const cpi = retainer > 0 && summary.monthViews > 0
+    ? proratedRetainer / summary.monthViews
+    : null;
 
   return (
     <Link href={`/${summary.client.toLowerCase()}`}
@@ -101,29 +130,31 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
             <div className="flex gap-2 flex-wrap">
               {summary.platforms.map((p) => (
                 <span key={p} className="flex items-center gap-1 text-xs"
-                  style={{ color: PLATFORM_COLORS[p] ?? "rgba(255,255,255,0.4)" }}>
+                  style={{ color: PLATFORM_COLORS[p] ?? "rgba(255,255,255,0.5)" }}>
                   <span className="w-1.5 h-1.5 rounded-full inline-block"
                     style={{ backgroundColor: PLATFORM_COLORS[p] ?? "#666" }} />
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </span>
               ))}
-              {summary.platforms.length === 0 && <span className="text-xs text-white/20">No data yet</span>}
+              {summary.platforms.length === 0 && <span className="text-xs text-white/30">No data yet</span>}
             </div>
           </div>
-          <span className="text-white/20 transition-all duration-300 text-lg"
-            style={{ color: hovered ? PINK : "rgba(255,255,255,0.2)", transform: hovered ? "translateX(3px)" : "none" }}>
+          <span className="transition-all duration-300 text-lg"
+            style={{ color: hovered ? PINK : "rgba(255,255,255,0.3)", transform: hovered ? "translateX(3px)" : "none" }}>
             →
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-4">
+
+        <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "Posts", value: summary.posts },
-            { label: "Views", value: summary.views },
-            { label: "Likes", value: summary.likes },
+            { label: "Posts", value: fmt(summary.posts) },
+            { label: "Views", value: fmt(summary.views) },
+            { label: "Likes", value: fmt(summary.likes) },
+            { label: "CPI", value: cpi != null ? `$${cpi.toFixed(2)}` : "—" },
           ].map((s) => (
             <div key={s.label}>
-              <p className="text-white/25 text-xs uppercase tracking-wider mb-1">{s.label}</p>
-              <p className="text-lg font-bold text-white">{fmt(s.value)}</p>
+              <p className="text-white/45 text-xs uppercase tracking-wider mb-1">{s.label}</p>
+              <p className="text-lg font-bold text-white">{s.value}</p>
             </div>
           ))}
         </div>
@@ -156,6 +187,7 @@ export default function OverviewPage() {
       posts: rows.reduce((s, r) => s + r.posts, 0),
       views: rows.reduce((s, r) => s + r.views, 0),
       likes: rows.reduce((s, r) => s + r.likes, 0),
+      monthViews: rows.reduce((s, r) => s + (r.month_views ?? 0), 0),
       platforms: [...new Set(rows.map((r) => r.platform))],
     };
   });
@@ -165,7 +197,7 @@ export default function OverviewPage() {
       <div className="max-w-7xl mx-auto px-6 py-12">
 
         {/* Header */}
-        <div className="mb-14"
+        <div className="mb-10"
           style={{
             opacity: headerVisible ? 1 : 0,
             transform: headerVisible ? "translateY(0)" : "translateY(12px)",
@@ -175,12 +207,12 @@ export default function OverviewPage() {
             Creator Camp
           </span>
           <h1 className="text-5xl font-bold text-white tracking-tight mb-2">Agency HQ</h1>
-          <p className="text-white/30 text-sm">All clients · All platforms</p>
+          <p className="text-white/40 text-sm">All clients · All platforms</p>
         </div>
 
         {/* Agency stats */}
         {!loading && (
-          <div className="grid grid-cols-3 gap-4 mb-14">
+          <div className="grid grid-cols-3 gap-4 mb-8">
             <AnimatedStat label="Total Posts" value={totalPosts} delay={0} />
             <AnimatedStat label="Total Views" value={totalViews} delay={80} />
             <AnimatedStat label="Total Likes" value={totalLikes} delay={160} />
@@ -188,7 +220,7 @@ export default function OverviewPage() {
         )}
 
         {loading && (
-          <div className="grid grid-cols-3 gap-4 mb-14">
+          <div className="grid grid-cols-3 gap-4 mb-8">
             {[0, 1, 2].map((i) => (
               <div key={i} className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-8 animate-pulse">
                 <div className="h-3 w-20 bg-white/10 rounded mb-4" />
@@ -200,7 +232,7 @@ export default function OverviewPage() {
 
         {/* Clients */}
         <div>
-          <p className="animate-fade-up text-white/25 text-xs uppercase tracking-widest font-medium mb-5"
+          <p className="animate-fade-up text-white/50 text-xs uppercase tracking-widest font-medium mb-4"
             style={{ animationDelay: "250ms", animationFillMode: "forwards" }}>
             Clients
           </p>
@@ -211,7 +243,7 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        <p className="animate-fade-in text-white/10 text-xs text-right mt-8"
+        <p className="animate-fade-in text-white/15 text-xs text-right mt-8"
           style={{ animationDelay: "700ms", animationFillMode: "forwards" }}>
           Updated nightly 11pm EST
         </p>

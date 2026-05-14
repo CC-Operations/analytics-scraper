@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, Legend, Area, AreaChart, BarChart, Bar,
+  CartesianGrid, BarChart, Bar,
 } from "recharts";
 
 const PINK = "#E82E6A";
@@ -79,7 +79,7 @@ function filterByRange(posts: Post[], range: string): Post[] {
 function StatCard({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:border-white/10 transition-colors">
-      <p className="text-white/40 text-xs uppercase tracking-widest mb-2 font-medium">{label}</p>
+      <p className="text-white/60 text-xs uppercase tracking-widest mb-2 font-medium">{label}</p>
       <p className="text-3xl font-bold text-white">{value}</p>
     </div>
   );
@@ -104,48 +104,40 @@ function TimeFilter({ value, onChange }: { value: string; onChange: (v: string) 
 
 function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange: string; onTimeChange: (v: string) => void }) {
   const filtered = filterByRange(data, timeRange);
-  const chartData = filtered
-    .filter((p) => p.posted_date)
-    .sort((a, b) => cleanDate(a.posted_date) > cleanDate(b.posted_date) ? 1 : -1)
-    .map((p) => ({
-      date: cleanDate(p.posted_date).slice(5),
-      Views: p.views ?? 0,
-      Likes: p.likes ?? 0,
-    }));
+
+  // Aggregate by week for clean, readable bars
+  const byWeek: Record<string, number> = {};
+  for (const p of filtered) {
+    if (!p.posted_date) continue;
+    const d = new Date(cleanDate(p.posted_date));
+    const weekStart = new Date(d);
+    weekStart.setDate(d.getDate() - d.getDay());
+    const key = weekStart.toISOString().slice(5, 10); // "MM-DD"
+    byWeek[key] = (byWeek[key] ?? 0) + (p.views ?? 0);
+  }
+  const chartData = Object.keys(byWeek).sort().map((k) => ({ week: k, Views: byWeek[k] }));
 
   return (
     <div>
       <div className="flex items-center justify-between mb-5">
-        <p className="text-white/40 text-xs uppercase tracking-widest font-medium">Views & Likes Over Time</p>
+        <p className="text-white/60 text-xs uppercase tracking-widest font-medium">Views by Week</p>
         <TimeFilter value={timeRange} onChange={onTimeChange} />
       </div>
       {chartData.length === 0
-        ? <div className="flex items-center justify-center h-40 text-white/20 text-sm">No data for this period</div>
+        ? <div className="flex items-center justify-center h-40 text-white/30 text-sm">No data for this period</div>
         : (
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <defs>
-                <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={PINK} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={PINK} stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="likesGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#00CFFF" stopOpacity={0.25} />
-                  <stop offset="95%" stopColor="#00CFFF" stopOpacity={0} />
-                </linearGradient>
-              </defs>
+            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmt(v)} />
+              <XAxis dataKey="week" tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: "rgba(255,255,255,0.5)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => fmt(v)} />
               <Tooltip
                 contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
-                labelStyle={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}
-                formatter={(v: number) => fmt(v)}
+                labelStyle={{ color: "rgba(255,255,255,0.6)", fontSize: 12 }}
+                formatter={(v: number) => [fmt(v), "Views"]}
               />
-              <Legend wrapperStyle={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }} />
-              <Area type="monotone" dataKey="Views" stroke={PINK} strokeWidth={2} fill="url(#viewsGrad)" dot={false} />
-              <Area type="monotone" dataKey="Likes" stroke="#00CFFF" strokeWidth={1.5} fill="url(#likesGrad)" dot={false} />
-            </AreaChart>
+              <Bar dataKey="Views" fill={PINK} radius={[4, 4, 0, 0]} />
+            </BarChart>
           </ResponsiveContainer>
         )}
     </div>
@@ -174,8 +166,17 @@ function CPMStat({ data, clientKey }: { data: Post[]; clientKey: string }) {
 
   const currentMonth = months[months.length - 1];
   const prevMonth = months.length > 1 ? months[months.length - 2] : null;
-  const currentCPI = retainer / byMonth[currentMonth];
-  const prevCPI = prevMonth ? retainer / byMonth[prevMonth] : null;
+  // Prorate retainer for the current month so mid-month comparisons are fair
+  const now = new Date();
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysElapsed = now.getDate();
+  const thisYearMonth = now.toISOString().slice(0, 7);
+
+  const effectiveRetainer = (month: string) =>
+    month === thisYearMonth ? retainer * (daysElapsed / daysInMonth) : retainer;
+
+  const currentCPI = effectiveRetainer(currentMonth) / byMonth[currentMonth];
+  const prevCPI = prevMonth ? effectiveRetainer(prevMonth) / byMonth[prevMonth] : null;
 
   // Lower CPI = better (more views per dollar)
   const improved = prevCPI !== null ? currentCPI < prevCPI : null;
@@ -185,7 +186,7 @@ function CPMStat({ data, clientKey }: { data: Post[]; clientKey: string }) {
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
-      <p className="text-white/30 text-xs uppercase tracking-widest font-medium">CPI</p>
+      <p className="text-white/55 text-xs uppercase tracking-widest font-medium">CPI</p>
       <p className="text-6xl font-bold text-white tabular-nums">{fmtCPI(currentCPI)}</p>
       <p className="text-white/20 text-xs">per view · {new Date().toLocaleString("default", { month: "long" })}</p>
       {improved !== null && pctChange !== null && (
@@ -226,7 +227,7 @@ function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number,
   return (
     <table className="w-full text-sm">
       <thead>
-        <tr className="border-b border-white/[0.06] text-white/30 text-xs uppercase tracking-widest">
+        <tr className="border-b border-white/[0.06] text-white/55 text-xs uppercase tracking-widest">
           <th className="text-center px-4 py-4 font-medium">Count</th>
           <th className="text-left px-4 py-4 font-medium">Date</th>
           <th className="text-left px-4 py-4 font-medium">Account</th>
@@ -246,7 +247,7 @@ function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number,
             <td className="px-4 py-3 text-center">
               <Toggle checked={!post.excluded} onChange={() => onToggle(post.id, !post.excluded)} />
             </td>
-            <td className="px-4 py-3 text-white/40 whitespace-nowrap font-mono text-xs">{cleanDate(post.posted_date) || "—"}</td>
+            <td className="px-4 py-3 text-white/60 whitespace-nowrap font-mono text-xs">{cleanDate(post.posted_date) || "—"}</td>
             <td className="px-4 py-3 text-white/60 whitespace-nowrap">{post.account}</td>
             <td className="px-4 py-3">
               <span className="flex items-center gap-1.5 text-xs text-white/50">
