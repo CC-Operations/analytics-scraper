@@ -129,15 +129,8 @@ def create_row(props):
         "properties": props,
     })
 
-def update_row(page_id, views, likes, comments):
-    notion_patch(f"https://api.notion.com/v1/pages/{page_id}", {
-        "properties": {
-            "Views":    {"number": views},
-            "Likes":    {"number": likes},
-            "Comments": {"number": comments},
-            "Date Scraped": {"date": {"start": date.today().isoformat()}},
-        }
-    })
+def update_row(page_id, props):
+    notion_patch(f"https://api.notion.com/v1/pages/{page_id}", {"properties": props})
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -158,14 +151,14 @@ def sync():
             continue
 
         try:
+            props = build_properties(
+                platform, client, account, shortcode, post_url,
+                caption, post_type, views, likes, comments, posted_date
+            )
             if shortcode in existing:
-                update_row(existing[shortcode], views, likes, comments)
+                update_row(existing[shortcode], props)
                 updated += 1
             else:
-                props = build_properties(
-                    platform, client, account, shortcode, post_url,
-                    caption, post_type, views, likes, comments, posted_date
-                )
                 create_row(props)
                 created += 1
         except Exception as e:
