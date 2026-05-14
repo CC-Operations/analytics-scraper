@@ -72,7 +72,7 @@ function ExportModal({ client, onClose }: { client: string; onClose: () => void 
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
       <div className="rounded-2xl p-8 w-full max-w-sm" style={{ backgroundColor: "#111", border: "1px solid rgba(255,255,255,0.1)" }} onClick={e => e.stopPropagation()}>
         <h2 className="text-white text-lg font-bold mb-1">Export Report</h2>
-        <p className="text-white/40 text-xs mb-6">Select a date range — opens a print-ready one-pager</p>
+        <p className="text-white/40 text-xs mb-6">Select a date range — opens a full analytics page with a download button</p>
 
         <div className="flex flex-col gap-4 mb-6">
           {[["From", from, setFrom], ["To", to, setTo]].map(([label, val, set]) => (
