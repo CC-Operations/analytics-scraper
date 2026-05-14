@@ -30,3 +30,12 @@
 .animate-pink-pulse {
   animation: pinkPulse 3s ease-in-out infinite;
 }
+
+@keyframes recPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.15; }
+}
+
+.rec-dot {
+  animation: recPulse 2.4s ease-in-out infinite;
+}
