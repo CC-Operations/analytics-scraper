@@ -152,53 +152,58 @@ function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange
   );
 }
 
-function CPMChart({ data, clientKey, timeRange, onTimeChange }: { data: Post[]; clientKey: string; timeRange: string; onTimeChange: (v: string) => void }) {
+function CPMStat({ data, clientKey }: { data: Post[]; clientKey: string }) {
   const retainer = MONTHLY_RETAINER[clientKey] ?? 0;
-  const filtered = filterByRange(data, timeRange);
 
-  // Group total views by month
+  if (retainer === 0) {
+    return <div className="flex items-center justify-center h-full text-white/20 text-sm">No retainer set</div>;
+  }
+
+  // Group views by month
   const byMonth: Record<string, number> = {};
-  for (const post of filtered) {
+  for (const post of data) {
     if (!post.posted_date || !post.views) continue;
     const month = cleanDate(post.posted_date).slice(0, 7);
     byMonth[month] = (byMonth[month] ?? 0) + post.views;
   }
 
-  const chartData = Object.entries(byMonth)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, views]) => ({
-      month: month.slice(5), // "04", "05"
-      CPM: retainer > 0 && views > 0 ? parseFloat(((retainer / views) * 1000).toFixed(2)) : 0,
-    }));
+  const months = Object.keys(byMonth).sort();
+  if (months.length === 0) {
+    return <div className="flex items-center justify-center h-full text-white/20 text-sm">No data yet</div>;
+  }
+
+  const currentMonth = months[months.length - 1];
+  const prevMonth = months.length > 1 ? months[months.length - 2] : null;
+  const currentCPM = (retainer / byMonth[currentMonth]) * 1000;
+  const prevCPM = prevMonth ? (retainer / byMonth[prevMonth]) * 1000 : null;
+
+  // Lower CPM = better (more views per dollar)
+  const improved = prevCPM !== null ? currentCPM < prevCPM : null;
+  const pctChange = prevCPM !== null ? Math.abs(((currentCPM - prevCPM) / prevCPM) * 100) : null;
+
+  const fmtCPM = (v: number) => v >= 100 ? `$${Math.round(v)}` : `$${v.toFixed(2)}`;
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-5">
-        <div>
-          <p className="text-white/40 text-xs uppercase tracking-widest font-medium">CPM</p>
-          <p className="text-white/20 text-[10px] mt-0.5">$ per 1K views · retainer ÷ monthly views</p>
+    <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
+      <p className="text-white/30 text-xs uppercase tracking-widest font-medium">CPM</p>
+      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPM(currentCPM)}</p>
+      <p className="text-white/20 text-xs">per 1K views · {new Date().toLocaleString("default", { month: "long" })}</p>
+      {improved !== null && pctChange !== null && (
+        <div className="flex items-center gap-2 mt-1">
+          <span className="text-2xl leading-none" style={{
+            color: improved ? "#22c55e" : "#ef4444",
+            filter: `drop-shadow(0 0 10px ${improved ? "rgba(34,197,94,0.7)" : "rgba(239,68,68,0.7)"})`,
+          }}>
+            {improved ? "↓" : "↑"}
+          </span>
+          <span className="text-sm font-medium" style={{ color: improved ? "#22c55e" : "#ef4444" }}>
+            {pctChange.toFixed(1)}% vs last month
+          </span>
         </div>
-        <TimeFilter value={timeRange} onChange={onTimeChange} />
-      </div>
-      {retainer === 0
-        ? <div className="flex items-center justify-center h-40 text-white/20 text-sm">Set retainer in MONTHLY_RETAINER to see CPM</div>
-        : chartData.length === 0
-        ? <div className="flex items-center justify-center h-40 text-white/20 text-sm">No data for this period</div>
-        : (
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-              <XAxis dataKey="month" tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fill: "rgba(255,255,255,0.25)", fontSize: 11 }} axisLine={false} tickLine={false} tickFormatter={(v) => `$${v}`} />
-              <Tooltip
-                contentStyle={{ backgroundColor: "#0a0a0a", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 12 }}
-                labelStyle={{ color: "rgba(255,255,255,0.5)", fontSize: 12 }}
-                formatter={(v: number) => [`$${v}`, "CPM"]}
-              />
-              <Bar dataKey="CPM" fill={PINK} radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        )}
+      )}
+      {improved === null && (
+        <p className="text-white/15 text-xs mt-1">More data next month</p>
+      )}
     </div>
   );
 }
@@ -279,7 +284,6 @@ export default function ClientPage() {
   const [loading, setLoading] = useState(true);
   const [activePlatform, setActivePlatform] = useState("Overview");
   const [chartRange1, setChartRange1] = useState("All");
-  const [chartRange2, setChartRange2] = useState("All");
 
   useEffect(() => {
     setLoading(true);
@@ -379,7 +383,7 @@ export default function ClientPage() {
                   <ViewsChart data={counted} timeRange={chartRange1} onTimeChange={setChartRange1} />
                 </div>
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
-                  <CPMChart data={counted} clientKey={client} timeRange={chartRange2} onTimeChange={setChartRange2} />
+                  <CPMStat data={counted} clientKey={client} />
                 </div>
               </div>
             )}
