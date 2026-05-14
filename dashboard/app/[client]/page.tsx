@@ -201,8 +201,8 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
       const earliest = new Date(dates[0]);
       const monthsActive = Math.max(1, (Date.now() - earliest.getTime()) / (30 * 24 * 60 * 60 * 1000));
       const totalSpend = retainer * monthsActive;
-      cpi = (totalSpend / totalViews) * 1000;
-      subtitle = `per 1K views · ${Math.round(monthsActive)} mo tracked`;
+      cpi = totalSpend / totalViews;
+      subtitle = `per view · ${Math.round(monthsActive)} mo tracked`;
     }
     // Month-over-month trend for the arrow
     const byMonth: Record<string, number> = {};
@@ -231,8 +231,8 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const proratedRetainer = retainer * (now.getDate() / daysInMonth);
     if (monthViews > 0) {
-      cpi = (proratedRetainer / monthViews) * 1000;
-      subtitle = `per 1K views · ${now.toLocaleString("default", { month: "long" })}`;
+      cpi = proratedRetainer / monthViews;
+      subtitle = `per view · ${now.toLocaleString("default", { month: "long" })}`;
     }
   }
 
@@ -240,12 +240,12 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
     return <div className="flex items-center justify-center h-full text-white/20 text-sm">No data yet</div>;
   }
 
-  const fmtCPM = (v: number) => v >= 100 ? `$${v.toFixed(0)}` : `$${v.toFixed(2)}`;
+  const fmtCPI = (v: number) => v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`;
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
-      <p className="text-white/55 text-xs uppercase tracking-widest font-medium">CPM</p>
-      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPM(cpi)}</p>
+      <p className="text-white/55 text-xs uppercase tracking-widest font-medium">CPI</p>
+      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPI(cpi)}</p>
       <p className="text-white/30 text-xs">{subtitle}</p>
       {improved !== null && pctChange !== null && (
         <div className="flex items-center gap-2 mt-1">
