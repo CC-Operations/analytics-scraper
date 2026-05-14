@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -386,6 +386,9 @@ function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number,
 
 export default function ClientPage() {
   const { client } = useParams<{ client: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const isPresenter = searchParams.get("present") === "1";
   const clientName = client.charAt(0).toUpperCase() + client.slice(1);
 
   const [posts, setPosts] = useState<Post[]>([]);
@@ -436,33 +439,53 @@ export default function ClientPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-10">
           <div>
-            <Link href="/" className="text-xs uppercase tracking-widest font-medium mb-2 block hover:opacity-70 transition-opacity" style={{ color: PINK }}>
-              ← Creator Camp
-            </Link>
-            <h1 className="text-3xl font-bold text-white tracking-tight">Analytics</h1>
+            {!isPresenter && (
+              <Link href="/" className="text-xs uppercase tracking-widest font-medium mb-2 block hover:opacity-70 transition-opacity" style={{ color: PINK }}>
+                ← Creator Camp
+              </Link>
+            )}
+            <h1 className="text-3xl font-bold text-white tracking-tight">{clientName} Analytics</h1>
           </div>
-          <button onClick={() => setShowExport(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all"
-            style={{ backgroundColor: PINK, color: "white" }}>
-            ↗ Export
-          </button>
+          <div className="flex items-center gap-2">
+            {isPresenter ? (
+              <button onClick={() => router.push(`/${client}`)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all border"
+                style={{ borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)", background: "transparent" }}>
+                ✕ Exit Presenter
+              </button>
+            ) : (
+              <button onClick={() => router.push(`/${client}?present=1`)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all border"
+                style={{ borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.45)", background: "transparent" }}
+                title="Hide other clients for screensharing">
+                ⊞ Present
+              </button>
+            )}
+            <button onClick={() => setShowExport(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all"
+              style={{ backgroundColor: PINK, color: "white" }}>
+              ↗ Export
+            </button>
+          </div>
         </div>
 
         {showExport && <ExportModal client={client} onClose={() => setShowExport(false)} />}
 
-        {/* Client tabs */}
-        <div className="flex gap-1 mb-8">
-          {CLIENTS.map((c) => (
-            <Link key={c} href={`/${c.toLowerCase()}`}
-              className="relative px-5 py-2.5 text-sm font-medium transition-all rounded-full"
-              style={c.toLowerCase() === client
-                ? { backgroundColor: PINK, color: "white" }
-                : { color: "rgba(255,255,255,0.35)" }
-              }>
-              {c}
-            </Link>
-          ))}
-        </div>
+        {/* Client tabs — hidden in presenter mode */}
+        {!isPresenter && (
+          <div className="flex gap-1 mb-8">
+            {CLIENTS.map((c) => (
+              <Link key={c} href={`/${c.toLowerCase()}`}
+                className="relative px-5 py-2.5 text-sm font-medium transition-all rounded-full"
+                style={c.toLowerCase() === client
+                  ? { backgroundColor: PINK, color: "white" }
+                  : { color: "rgba(255,255,255,0.35)" }
+                }>
+                {c}
+              </Link>
+            ))}
+          </div>
+        )}
 
         {/* Platform tabs + View Mode Toggle */}
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
