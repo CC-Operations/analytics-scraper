@@ -22,6 +22,7 @@ INSTAGRAM_ACCOUNTS = [
 
 TIKTOK_ACCOUNTS = [
     {"handle": "inspirethecosmos", "client": "Cosmos", "account": "@inspirethecosmos", "start_date": "2026-05-13"},
+    {"handle": "wabimaxxing",      "client": "Wabi",   "account": "@wabimaxxing",      "start_date": "2025-12-24"},
 ]
 
 TWITTER_ACCOUNTS = [
