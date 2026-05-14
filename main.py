@@ -230,19 +230,29 @@ def scrape_tiktok():
 # ── Twitter/X ─────────────────────────────────────────────────────────────────
 
 def parse_tweet_date(raw):
-    """Handle both ISO dates ('2026-05-13...') and short dates ('Wed May 13')."""
+    """Parse Twitter createdAt into YYYY-MM-DD.
+    Handles:
+      - ISO:            '2026-05-13...'
+      - Full Twitter:   'Wed May 13 12:00:00 +0000 2026'
+      - Short no-year:  'Wed May 13'
+    """
     if not raw:
         return None
     raw = raw.strip()
     # Already ISO format
     if len(raw) >= 10 and raw[4] == "-":
         return raw[:10]
-    # "Wed May 13" — no year, infer from current date
+    # Full Twitter API format: "Wed May 13 12:00:00 +0000 2026"
+    for fmt in ("%a %b %d %H:%M:%S %z %Y", "%a %b %d %H:%M:%S %Z %Y"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    # Short no-year fallback: "Wed May 13"
     try:
         now = datetime.now()
-        d = datetime.strptime(raw, "%a %b %d")
+        d = datetime.strptime(raw[:10], "%a %b %d")
         year = now.year
-        # If the month is after the current month it must be last year
         if d.month > now.month:
             year -= 1
         return d.replace(year=year).strftime("%Y-%m-%d")
