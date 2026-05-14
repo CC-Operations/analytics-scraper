@@ -174,20 +174,20 @@ function CPMStat({ data, clientKey }: { data: Post[]; clientKey: string }) {
 
   const currentMonth = months[months.length - 1];
   const prevMonth = months.length > 1 ? months[months.length - 2] : null;
-  const currentCPM = (retainer / byMonth[currentMonth]) * 1000;
-  const prevCPM = prevMonth ? (retainer / byMonth[prevMonth]) * 1000 : null;
+  const currentCPI = retainer / byMonth[currentMonth];
+  const prevCPI = prevMonth ? retainer / byMonth[prevMonth] : null;
 
-  // Lower CPM = better (more views per dollar)
-  const improved = prevCPM !== null ? currentCPM < prevCPM : null;
-  const pctChange = prevCPM !== null ? Math.abs(((currentCPM - prevCPM) / prevCPM) * 100) : null;
+  // Lower CPI = better (more views per dollar)
+  const improved = prevCPI !== null ? currentCPI < prevCPI : null;
+  const pctChange = prevCPI !== null ? Math.abs(((currentCPI - prevCPI) / prevCPI) * 100) : null;
 
-  const fmtCPM = (v: number) => v >= 100 ? `$${Math.round(v)}` : `$${v.toFixed(2)}`;
+  const fmtCPI = (v: number) => `$${v.toFixed(2)}`;
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
-      <p className="text-white/30 text-xs uppercase tracking-widest font-medium">CPM</p>
-      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPM(currentCPM)}</p>
-      <p className="text-white/20 text-xs">per 1K views · {new Date().toLocaleString("default", { month: "long" })}</p>
+      <p className="text-white/30 text-xs uppercase tracking-widest font-medium">CPI</p>
+      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPI(currentCPI)}</p>
+      <p className="text-white/20 text-xs">per view · {new Date().toLocaleString("default", { month: "long" })}</p>
       {improved !== null && pctChange !== null && (
         <div className="flex items-center gap-2 mt-1">
           <span className="text-2xl leading-none" style={{
