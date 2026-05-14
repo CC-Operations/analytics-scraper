@@ -63,11 +63,13 @@ export default function ReportPage() {
   const to   = searchParams.get("to") ?? "";
 
   const [posts, setPosts] = useState<Post[]>([]);
+  const [priorPosts, setPriorPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const printed = useRef(false);
 
   const clientName = client.charAt(0).toUpperCase() + client.slice(1);
 
+  // Fetch current period
   useEffect(() => {
     if (!from || !to) return;
     fetch(`/api/report?client=${clientName}&from=${from}&to=${to}`)
@@ -76,10 +78,25 @@ export default function ReportPage() {
       .catch(() => setLoading(false));
   }, [clientName, from, to]);
 
+  // Fetch prior 4 weeks for chart context (non-blocking)
+  useEffect(() => {
+    if (!from) return;
+    const priorTo = new Date(from + "T12:00:00");
+    priorTo.setDate(priorTo.getDate() - 1);
+    const priorFrom = new Date(from + "T12:00:00");
+    priorFrom.setDate(priorFrom.getDate() - 28);
+    const pf = priorFrom.toISOString().slice(0, 10);
+    const pt = priorTo.toISOString().slice(0, 10);
+    fetch(`/api/report?client=${clientName}&from=${pf}&to=${pt}`)
+      .then(r => r.json())
+      .then(d => setPriorPosts(Array.isArray(d) ? d : []))
+      .catch(() => {});
+  }, [clientName, from]);
+
   useEffect(() => {
     if (!loading && posts.length >= 0 && !printed.current) {
       printed.current = true;
-      setTimeout(() => window.print(), 400);
+      setTimeout(() => window.print(), 600);
     }
   }, [loading, posts]);
 
@@ -115,16 +132,35 @@ export default function ReportPage() {
   const topPosts = [...posts].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 5);
 
   // ── Weekly line chart ──
+  function toWeekKey(dateStr: string | null) {
+    if (!dateStr) return null;
+    const d = new Date(cleanDate(dateStr));
+    const ws = new Date(d);
+    ws.setDate(d.getDate() - d.getDay());
+    return ws.toISOString().slice(5, 10);
+  }
+
+  // Prior 4 weeks (chart context only)
+  const byPriorWeek: Record<string, number> = {};
+  for (const p of priorPosts) {
+    const key = toWeekKey(p.posted_date);
+    if (!key) continue;
+    byPriorWeek[key] = (byPriorWeek[key] ?? 0) + (p.views ?? 0);
+  }
+  const priorWeekData = Object.keys(byPriorWeek).sort().map(k => ({ week: k, views: byPriorWeek[k], isPrior: true }));
+
+  // Current period weeks
   const byWeek: Record<string, number> = {};
   for (const p of posts) {
-    if (!p.posted_date) continue;
-    const d = new Date(cleanDate(p.posted_date));
-    const weekStart = new Date(d);
-    weekStart.setDate(d.getDate() - d.getDay());
-    const key = weekStart.toISOString().slice(5, 10);
+    const key = toWeekKey(p.posted_date);
+    if (!key) continue;
     byWeek[key] = (byWeek[key] ?? 0) + (p.views ?? 0);
   }
-  const weekData = Object.keys(byWeek).sort().map(k => ({ week: k, views: byWeek[k] }));
+  const currentWeekData = Object.keys(byWeek).sort().map(k => ({ week: k, views: byWeek[k], isPrior: false }));
+
+  // Combined (deduplicated, prior first)
+  const allWeekKeys = new Set([...priorWeekData.map(w => w.week), ...currentWeekData.map(w => w.week)]);
+  const weekData = [...priorWeekData, ...currentWeekData].filter((w, i, arr) => arr.findIndex(x => x.week === w.week) === i).sort((a, b) => a.week.localeCompare(b.week));
   const n = weekData.length;
 
   // Linear regression
@@ -238,15 +274,41 @@ export default function ReportPage() {
 
         {/* ── Weekly Performance Line Chart ── */}
         {weekData.length > 1 && (() => {
-          const W = 796, H = 160, PAD = { top: 16, right: 16, bottom: 28, left: 48 };
+          const W = 796, H = 170, PAD = { top: 20, right: 20, bottom: 30, left: 52 };
           const innerW = W - PAD.left - PAD.right;
           const innerH = H - PAD.top - PAD.bottom;
           const maxV = Math.max(...weekData.map(w => w.views), 1);
-          const xOf = (i: number) => PAD.left + (i / (n - 1)) * innerW;
-          const yOf = (v: number) => PAD.top + (1 - v / maxV) * innerH;
-          const linePath = weekData.map((w, i) =>
-            `${i === 0 ? "M" : "L"}${xOf(i).toFixed(1)},${yOf(w.views).toFixed(1)}`
-          ).join(" ");
+          const xOf = (i: number) => PAD.left + (i / Math.max(n - 1, 1)) * innerW;
+          const yOf = (v: number) => PAD.top + (1 - Math.max(0, v) / maxV) * innerH;
+
+          // Split into prior segment and current segment
+          const lastPriorIdx = weekData.reduce((acc, w, i) => w.isPrior ? i : acc, -1);
+          const firstCurrentIdx = weekData.findIndex(w => !w.isPrior);
+
+          // Prior line path (dashed, muted)
+          const priorPath = weekData
+            .filter(w => w.isPrior)
+            .map((w, i, arr) => `${i === 0 ? "M" : "L"}${xOf(weekData.indexOf(w)).toFixed(1)},${yOf(w.views).toFixed(1)}`)
+            .join(" ");
+
+          // Bridge from last prior to first current (same muted style)
+          const bridgePath = lastPriorIdx >= 0 && firstCurrentIdx >= 0
+            ? `M${xOf(lastPriorIdx).toFixed(1)},${yOf(weekData[lastPriorIdx].views).toFixed(1)} L${xOf(firstCurrentIdx).toFixed(1)},${yOf(weekData[firstCurrentIdx].views).toFixed(1)}`
+            : "";
+
+          // Current line path (solid pink)
+          const currentPath = weekData
+            .map((w, i) => ({ w, i }))
+            .filter(({ w }) => !w.isPrior)
+            .map(({ w, i }, j) => `${j === 0 ? "M" : "L"}${xOf(i).toFixed(1)},${yOf(w.views).toFixed(1)}`)
+            .join(" ");
+
+          // Area fill under current segment only
+          const currentIndices = weekData.map((w, i) => ({ w, i })).filter(({ w }) => !w.isPrior);
+          const areaPath = currentIndices.length > 1
+            ? `${currentPath} L${xOf(currentIndices[currentIndices.length-1].i).toFixed(1)},${(PAD.top + innerH).toFixed(1)} L${xOf(currentIndices[0].i).toFixed(1)},${(PAD.top + innerH).toFixed(1)} Z`
+            : "";
+
           const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => Math.round(t * maxV));
           const trendColor = trendPoints
             ? trendPoints.slope > 0 ? "#4ade80" : trendPoints.slope < 0 ? "#f87171" : "rgba(255,255,255,0.3)"
@@ -263,35 +325,71 @@ export default function ReportPage() {
                 )}
               </div>
               <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+                {/* Grid */}
                 {yTicks.map(v => (
                   <g key={v}>
                     <line x1={PAD.left} x2={W - PAD.right} y1={yOf(v)} y2={yOf(v)} stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
-                    <text x={PAD.left - 6} y={yOf(v) + 4} textAnchor="end" fill="rgba(255,255,255,0.3)" fontSize="9">{fmt(v)}</text>
+                    <text x={PAD.left - 6} y={yOf(v) + 4} textAnchor="end" fill="rgba(255,255,255,0.25)" fontSize="9">{fmt(v)}</text>
                   </g>
                 ))}
-                {trendPoints && (
-                  <line x1={xOf(0)} y1={yOf(Math.max(0, trendPoints.y0))} x2={xOf(n - 1)} y2={yOf(Math.max(0, trendPoints.y1))}
-                    stroke={trendColor} strokeWidth="1.5" strokeDasharray="5,4" opacity="0.6" />
+
+                {/* Divider between prior and current */}
+                {firstCurrentIdx > 0 && (
+                  <line x1={xOf(firstCurrentIdx)} x2={xOf(firstCurrentIdx)} y1={PAD.top} y2={PAD.top + innerH}
+                    stroke="rgba(255,255,255,0.1)" strokeWidth="1" strokeDasharray="3,3" />
                 )}
-                <path d={`${linePath} L${xOf(n-1).toFixed(1)},${(PAD.top + innerH).toFixed(1)} L${xOf(0).toFixed(1)},${(PAD.top + innerH).toFixed(1)} Z`}
-                  fill={`${PINK}22`} />
-                <path d={linePath} fill="none" stroke={PINK} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
-                {weekData.map((w, i) => (
-                  <g key={w.week}>
-                    <circle cx={xOf(i)} cy={yOf(w.views)} r="4" fill={PINK} />
-                    {(n <= 8 || i % Math.ceil(n / 8) === 0 || i === n - 1) && (
-                      <text x={xOf(i)} y={H - 4} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize="9">{w.week}</text>
-                    )}
-                  </g>
-                ))}
+
+                {/* Trendline (full range) */}
+                {trendPoints && n > 1 && (
+                  <line x1={xOf(0)} y1={yOf(Math.max(0, trendPoints.y0))} x2={xOf(n - 1)} y2={yOf(Math.max(0, trendPoints.y1))}
+                    stroke={trendColor} strokeWidth="1.5" strokeDasharray="5,4" opacity="0.5" />
+                )}
+
+                {/* Area under current */}
+                {areaPath && <path d={areaPath} fill={`${PINK}20`} />}
+
+                {/* Prior line (muted, dashed) */}
+                {priorPath && <path d={priorPath} fill="none" stroke={PINK} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.35" strokeLinejoin="round" strokeLinecap="round" />}
+
+                {/* Bridge connector */}
+                {bridgePath && <path d={bridgePath} fill="none" stroke={PINK} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.35" />}
+
+                {/* Current line (solid) */}
+                {currentPath && <path d={currentPath} fill="none" stroke={PINK} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />}
+
+                {/* Dots */}
+                {weekData.map((w, i) => {
+                  const isLast = i === n - 1;
+                  const isPrior = w.isPrior;
+                  const r = isLast ? 7 : isPrior ? 3 : 4.5;
+                  const opacity = isPrior ? 0.4 : 1;
+                  const showLabel = n <= 10 || i === 0 || i % Math.ceil(n / 7) === 0 || isLast || i === firstCurrentIdx;
+                  return (
+                    <g key={w.week}>
+                      {isLast && <circle cx={xOf(i)} cy={yOf(w.views)} r="14" fill={PINK} opacity="0.12" />}
+                      {isLast && <circle cx={xOf(i)} cy={yOf(w.views)} r="9" fill={PINK} opacity="0.2" />}
+                      <circle cx={xOf(i)} cy={yOf(w.views)} r={r} fill={PINK} opacity={opacity} />
+                      {showLabel && (
+                        <text x={xOf(i)} y={H - 5} textAnchor="middle"
+                          fill={isLast ? "rgba(255,255,255,0.6)" : isPrior ? "rgba(255,255,255,0.2)" : "rgba(255,255,255,0.4)"}
+                          fontSize="9" fontWeight={isLast ? "700" : "400"}>{w.week}</text>
+                      )}
+                    </g>
+                  );
+                })}
               </svg>
+
               <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 16, height: 2.5, background: PINK, borderRadius: 2 }} />
-                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Weekly views</span>
+                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>This period</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke={trendColor} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.7" /></svg>
+                  <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke={PINK} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.4" /></svg>
+                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Prior 4 weeks</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke={trendColor} strokeWidth="1.5" strokeDasharray="4,3" opacity="0.6" /></svg>
                   <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Trend</span>
                 </div>
               </div>
