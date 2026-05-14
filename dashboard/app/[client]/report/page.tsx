@@ -87,7 +87,7 @@ export default function ReportPage() {
   // Top 5 posts by views
   const topPosts = [...posts].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 5);
 
-  // Weekly bar chart data
+  // Weekly line chart data
   const byWeek: Record<string, number> = {};
   for (const p of posts) {
     if (!p.posted_date) continue;
@@ -98,7 +98,21 @@ export default function ReportPage() {
     byWeek[key] = (byWeek[key] ?? 0) + (p.views ?? 0);
   }
   const weekData = Object.keys(byWeek).sort().map(k => ({ week: k, views: byWeek[k] }));
-  const maxViews = Math.max(...weekData.map(w => w.views), 1);
+
+  // Linear regression trendline
+  const n = weekData.length;
+  const trendPoints = (() => {
+    if (n < 2) return null;
+    const xs = weekData.map((_, i) => i);
+    const ys = weekData.map(w => w.views);
+    const meanX = xs.reduce((a, b) => a + b, 0) / n;
+    const meanY = ys.reduce((a, b) => a + b, 0) / n;
+    const num = xs.reduce((s, x, i) => s + (x - meanX) * (ys[i] - meanY), 0);
+    const den = xs.reduce((s, x) => s + (x - meanX) ** 2, 0);
+    const slope = den === 0 ? 0 : num / den;
+    const intercept = meanY - slope * meanX;
+    return { y0: intercept, y1: slope * (n - 1) + intercept };
+  })();
 
   if (loading) {
     return (
@@ -159,22 +173,81 @@ export default function ReportPage() {
           ))}
         </div>
 
-        {/* Bar Chart */}
-        {weekData.length > 0 && (
-          <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: "24px 28px", marginBottom: 36 }}>
-            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 20 }}>
-              Views by Week
-            </div>
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
-              {weekData.map(w => (
-                <div key={w.week} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <div style={{ width: "100%", background: PINK, borderRadius: "4px 4px 0 0", height: `${Math.max(4, (w.views / maxViews) * 100)}px`, transition: "height 0.3s" }} />
-                  <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 10, whiteSpace: "nowrap" }}>{w.week}</div>
+        {/* Line Chart */}
+        {weekData.length > 1 && (() => {
+          const W = 796, H = 160, PAD = { top: 16, right: 16, bottom: 28, left: 48 };
+          const innerW = W - PAD.left - PAD.right;
+          const innerH = H - PAD.top - PAD.bottom;
+          const maxV = Math.max(...weekData.map(w => w.views), 1);
+          const xOf = (i: number) => PAD.left + (i / (n - 1)) * innerW;
+          const yOf = (v: number) => PAD.top + (1 - v / maxV) * innerH;
+
+          const linePath = weekData.map((w, i) =>
+            `${i === 0 ? "M" : "L"}${xOf(i).toFixed(1)},${yOf(w.views).toFixed(1)}`
+          ).join(" ");
+
+          // Y-axis tick values
+          const yTicks = [0, 0.25, 0.5, 0.75, 1].map(t => Math.round(t * maxV));
+
+          return (
+            <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 16, padding: "24px 28px", marginBottom: 36 }}>
+              <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 10, fontWeight: 600, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 16 }}>
+                Weekly Performance
+              </div>
+              <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: "visible" }}>
+                {/* Grid lines */}
+                {yTicks.map(v => (
+                  <g key={v}>
+                    <line x1={PAD.left} x2={W - PAD.right} y1={yOf(v)} y2={yOf(v)}
+                      stroke="rgba(255,255,255,0.06)" strokeWidth="1" />
+                    <text x={PAD.left - 6} y={yOf(v) + 4} textAnchor="end"
+                      fill="rgba(255,255,255,0.3)" fontSize="9">{fmt(v)}</text>
+                  </g>
+                ))}
+
+                {/* Trendline */}
+                {trendPoints && (
+                  <line
+                    x1={xOf(0)} y1={yOf(trendPoints.y0)}
+                    x2={xOf(n - 1)} y2={yOf(trendPoints.y1)}
+                    stroke="rgba(255,255,255,0.18)" strokeWidth="1.5"
+                    strokeDasharray="5,4" />
+                )}
+
+                {/* Area fill */}
+                <path
+                  d={`${linePath} L${xOf(n-1).toFixed(1)},${(PAD.top + innerH).toFixed(1)} L${xOf(0).toFixed(1)},${(PAD.top + innerH).toFixed(1)} Z`}
+                  fill={`${PINK}22`} />
+
+                {/* Line */}
+                <path d={linePath} fill="none" stroke={PINK} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
+
+                {/* Dots + x labels */}
+                {weekData.map((w, i) => (
+                  <g key={w.week}>
+                    <circle cx={xOf(i)} cy={yOf(w.views)} r="4" fill={PINK} />
+                    {(n <= 8 || i % Math.ceil(n / 8) === 0 || i === n - 1) && (
+                      <text x={xOf(i)} y={H - 4} textAnchor="middle"
+                        fill="rgba(255,255,255,0.3)" fontSize="9">{w.week}</text>
+                    )}
+                  </g>
+                ))}
+              </svg>
+
+              {/* Legend */}
+              <div style={{ display: "flex", gap: 20, marginTop: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 16, height: 2.5, background: PINK, borderRadius: 2 }} />
+                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Weekly views</span>
                 </div>
-              ))}
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" strokeDasharray="4,3" /></svg>
+                  <span style={{ color: "rgba(255,255,255,0.4)", fontSize: 10 }}>Trend</span>
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Top Posts */}
         {topPosts.length > 0 && (
