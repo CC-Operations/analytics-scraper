@@ -513,7 +513,7 @@ export default function ClientPage() {
                   style={isActive
                     ? { borderColor: "rgba(255,255,255,0.15)", backgroundColor: "rgba(255,255,255,0.08)", color: "white" }
                     : isComing
-                    ? { borderColor: "transparent", color: "rgba(255,255,255,0.15)", cursor: "not-allowed" }
+                    ? { borderColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.35)", cursor: "not-allowed" }
                     : { borderColor: "rgba(255,255,255,0.06)", color: "rgba(255,255,255,0.4)" }
                   }>
                   {p !== "Overview" && (
@@ -521,7 +521,7 @@ export default function ClientPage() {
                       style={{ backgroundColor: isAvailable ? PLATFORM_COLORS[p.toLowerCase()] : "rgba(255,255,255,0.1)" }} />
                   )}
                   {p}
-                  {isComing && <span className="text-[10px] opacity-50">soon</span>}
+                  {isComing && <span className="text-[10px]" style={{ color: PINK, opacity: 0.7 }}>soon</span>}
                 </button>
               );
             })}
