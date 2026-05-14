@@ -55,6 +55,49 @@ type Post = {
 
 type ViewMode = "all" | "month";
 
+// ── Export Modal ──────────────────────────────────────────────────────────────
+
+function ExportModal({ client, onClose }: { client: string; onClose: () => void }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const [from, setFrom] = useState(weekAgo);
+  const [to, setTo]     = useState(today);
+
+  function generate() {
+    window.open(`/${client}/report?from=${from}&to=${to}`, "_blank");
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: "rgba(0,0,0,0.8)" }} onClick={onClose}>
+      <div className="rounded-2xl p-8 w-full max-w-sm" style={{ backgroundColor: "#111", border: "1px solid rgba(255,255,255,0.1)" }} onClick={e => e.stopPropagation()}>
+        <h2 className="text-white text-lg font-bold mb-1">Export Report</h2>
+        <p className="text-white/40 text-xs mb-6">Select a date range — opens a print-ready one-pager</p>
+
+        <div className="flex flex-col gap-4 mb-6">
+          {[["From", from, setFrom], ["To", to, setTo]].map(([label, val, set]) => (
+            <div key={label as string}>
+              <label className="text-white/50 text-xs uppercase tracking-widest block mb-1.5">{label as string}</label>
+              <input type="date" value={val as string} onChange={e => (set as (v: string) => void)(e.target.value)}
+                className="w-full rounded-xl px-4 py-2.5 text-white text-sm font-medium outline-none"
+                style={{ backgroundColor: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)", colorScheme: "dark" }} />
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white/40" style={{ backgroundColor: "rgba(255,255,255,0.05)" }}>
+            Cancel
+          </button>
+          <button onClick={generate} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white" style={{ backgroundColor: PINK }}>
+            Generate Report →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function fmt(n: number | null) {
   if (n == null) return "—";
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M";
@@ -350,6 +393,7 @@ export default function ClientPage() {
   const [activePlatform, setActivePlatform] = useState("Overview");
   const [chartRange1, setChartRange1] = useState("All");
   const [viewMode, setViewMode] = useState<ViewMode>("all");
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
     setLoading(true);
@@ -397,7 +441,14 @@ export default function ClientPage() {
             </Link>
             <h1 className="text-3xl font-bold text-white tracking-tight">Analytics</h1>
           </div>
+          <button onClick={() => setShowExport(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all"
+            style={{ backgroundColor: PINK, color: "white" }}>
+            ↗ Export Report
+          </button>
         </div>
+
+        {showExport && <ExportModal client={client} onClose={() => setShowExport(false)} />}
 
         {/* Client tabs */}
         <div className="flex gap-1 mb-8">
