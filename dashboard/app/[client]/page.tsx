@@ -53,7 +53,7 @@ type Post = {
   excluded: boolean;
 };
 
-type ViewMode = "all" | "month";
+type ViewMode = "all" | "month" | "week";
 
 // ── Export Modal ──────────────────────────────────────────────────────────────
 
@@ -126,14 +126,21 @@ function filterByMonth(posts: Post[]): Post[] {
   return posts.filter((p) => p.posted_date && cleanDate(p.posted_date).slice(0, 7) === ym);
 }
 
+function filterByWeek(posts: Post[]): Post[] {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - 7);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+  return posts.filter((p) => p.posted_date && cleanDate(p.posted_date) >= cutoffStr);
+}
+
 // ── View Mode Toggle ──────────────────────────────────────────────────────────
 
 function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
   return (
     <div className="flex items-center gap-1 bg-white/[0.05] rounded-full p-1">
-      {([["all", "All Time"], ["month", "This Month"]] as [ViewMode, string][]).map(([val, label]) => (
+      {([["week", "This Week"], ["month", "This Month"], ["all", "All Time"]] as [ViewMode, string][]).map(([val, label]) => (
         <button key={val} onClick={() => onChange(val)}
-          className="px-4 py-1.5 rounded-full text-xs font-semibold transition-all duration-200"
+          className="px-3 py-1 rounded-full text-[11px] font-semibold transition-all duration-200"
           style={mode === val
             ? { backgroundColor: PINK, color: "white" }
             : { color: "rgba(255,255,255,0.4)" }
@@ -416,8 +423,11 @@ export default function ClientPage() {
   // This month's counted posts
   const monthCounted = filterByMonth(allCounted);
 
+  // This week's counted posts
+  const weekCounted = filterByWeek(allCounted);
+
   // What the stats + chart show depends on the toggle
-  const displayCounted = viewMode === "all" ? allCounted : monthCounted;
+  const displayCounted = viewMode === "all" ? allCounted : viewMode === "month" ? monthCounted : weekCounted;
 
   const totalViews = displayCounted.reduce((s, p) => s + (p.views ?? 0), 0);
   const totalLikes = displayCounted.reduce((s, p) => s + (p.likes ?? 0), 0);
@@ -535,7 +545,7 @@ export default function ClientPage() {
                   <ViewsChart data={displayCounted} timeRange={chartRange1} onTimeChange={setChartRange1} />
                 </div>
                 <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
-                  <CPIStat allPosts={allCounted} monthPosts={monthCounted} clientKey={client} mode={viewMode} />
+                  <CPIStat allPosts={allCounted} monthPosts={viewMode === "week" ? weekCounted : monthCounted} clientKey={client} mode={viewMode === "week" ? "month" : viewMode} />
                 </div>
               </div>
             )}
