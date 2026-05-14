@@ -26,6 +26,7 @@ TIKTOK_ACCOUNTS = [
 
 TWITTER_ACCOUNTS = [
     {"handle": "thecosmos", "client": "Cosmos", "account": "@thecosmos", "start_date": "2026-05-13"},
+    {"handle": "wabi",      "client": "Wabi",   "account": "@wabi",      "start_date": "2025-12-24"},
 ]
 
 POST_TYPE_MAP = {
