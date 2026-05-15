@@ -99,7 +99,14 @@ def insert_post(platform, client, account, shortcode, post_url, caption,
                     (client, account, platform, shortcode, post_url, caption,
                      post_type, views, likes, comments, posted_date)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (platform, shortcode) DO NOTHING
+                ON CONFLICT (platform, shortcode) DO UPDATE SET
+                    views      = EXCLUDED.views,
+                    likes      = EXCLUDED.likes,
+                    comments   = EXCLUDED.comments,
+                    post_url   = COALESCE(EXCLUDED.post_url, posts.post_url),
+                    caption    = COALESCE(NULLIF(EXCLUDED.caption,''), posts.caption),
+                    post_type  = COALESCE(EXCLUDED.post_type, posts.post_type),
+                    posted_date = COALESCE(EXCLUDED.posted_date, posts.posted_date)
             """, (client, account, platform, shortcode, post_url,
                   (caption or "")[:500], post_type, views, likes, comments, posted_date))
         conn.commit()
