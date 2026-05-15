@@ -327,7 +327,7 @@ function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month" | "all"
             <button key={r} onClick={() => setRange(r)}
               className="relative z-10 px-4 py-1 rounded-full text-xs font-semibold transition-colors duration-200"
               style={{ color: range === r ? "#fff" : "rgba(255,255,255,0.35)" }}>
-              {r === "week" ? "1W" : r === "month" ? "1M" : "All"}
+              {r === "week" ? "1W" : r === "month" ? "1M" : "All Time"}
             </button>
           ))}
         </div>
