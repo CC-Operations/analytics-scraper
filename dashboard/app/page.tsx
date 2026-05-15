@@ -83,6 +83,7 @@ type LeaderboardAccount = {
   client: string;
   platform: string;
   views: number;
+  likes: number;
   posts: number;
   top_caption: string | null;
 };
@@ -320,13 +321,13 @@ function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month" | "all"
           <div className="absolute top-0.5 bottom-0.5 rounded-full transition-all duration-300 ease-in-out"
             style={{
               background: "rgba(255,255,255,0.12)",
-              width: "calc(33.333% - 2px)",
-              left: range === "week" ? "2px" : range === "month" ? "calc(33.333%)" : "calc(66.666%)",
+              width: "calc(33.333% - 1.33px)",
+              left: range === "week" ? "2px" : range === "month" ? "calc(33.333% + 0.33px)" : "calc(66.666% - 0.33px)",
             }} />
           {(["week", "month", "all"] as const).map(r => (
             <button key={r} onClick={() => setRange(r)}
-              className="relative z-10 px-4 py-1 rounded-full text-xs font-semibold transition-colors duration-200"
-              style={{ color: range === r ? "#fff" : "rgba(255,255,255,0.35)" }}>
+              className="relative z-10 rounded-full text-xs font-semibold transition-colors duration-200 outline-none"
+              style={{ color: range === r ? "#fff" : "rgba(255,255,255,0.35)", width: 72, textAlign: "center", padding: "4px 0" }}>
               {r === "week" ? "1W" : r === "month" ? "1M" : "All-Time"}
             </button>
           ))}
@@ -379,6 +380,10 @@ function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month" | "all"
                   <p className="text-sm font-bold tabular-nums" style={{ color: i === 0 ? PINK : "#fff" }}>
                     {fmt(row.views)}
                   </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Likes</p>
+                  <p className="text-sm font-bold text-white tabular-nums">{fmt(row.likes)}</p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Posts</p>

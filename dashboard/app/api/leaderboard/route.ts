@@ -27,6 +27,7 @@ export async function GET(req: Request) {
       client,
       platform,
       COALESCE(SUM(views), 0)::int AS views,
+      COALESCE(SUM(likes), 0)::int AS likes,
       COUNT(*)::int AS posts,
       (
         SELECT caption
