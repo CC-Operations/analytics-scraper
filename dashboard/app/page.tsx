@@ -90,7 +90,8 @@ type LeaderboardPost = {
 type LeaderboardData = {
   byAccount: LeaderboardAccount[];
   byPost: LeaderboardPost[];
-  weekStart: string;
+  since: string;
+  range: "week" | "month";
 };
 
 function AnimatedStat({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
@@ -215,38 +216,78 @@ function LeaderboardSkeleton() {
   );
 }
 
-function LeaderboardTab({ data, loading }: { data: LeaderboardData | null; loading: boolean }) {
+const PLATFORM_LABEL: Record<string, string> = {
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  twitter: "Twitter",
+};
+
+function PlatformBadge({ platform }: { platform: string }) {
+  const color = PLATFORM_COLORS[platform] ?? "#666";
+  const label = PLATFORM_LABEL[platform] ?? platform;
+  return (
+    <span className="flex items-center gap-1.5 flex-shrink-0 text-xs font-medium px-2 py-0.5 rounded-full"
+      style={{ background: `${color}18`, color }}>
+      <span className="w-1.5 h-1.5 rounded-full inline-block flex-shrink-0" style={{ background: color }} />
+      {label}
+    </span>
+  );
+}
+
+function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month") => Promise<LeaderboardData> }) {
   const [subTab, setSubTab] = useState<"account" | "post">("account");
+  const [range, setRange] = useState<"week" | "month">("week");
+  const [data, setData] = useState<LeaderboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const subTabs: { key: "account" | "post"; label: string }[] = [
-    { key: "account", label: "By Account" },
-    { key: "post", label: "By Post" },
-  ];
+  useEffect(() => {
+    setLoading(true);
+    onFetch(range).then(d => { setData(d); setLoading(false); });
+  }, [range]);
 
-  const weekLabel = data?.weekStart
-    ? new Date(data.weekStart + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })
+  const sinceLabel = data?.since
+    ? new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
     : null;
+
+  const emptyMsg = range === "week" ? "No posts this week yet." : "No posts this month yet.";
 
   return (
     <div>
-      {/* Sub-tab bar */}
-      <div className="flex gap-2 mb-6">
-        {subTabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setSubTab(t.key)}
+      {/* Sub-tab + range toggle row */}
+      <div className="flex items-center gap-3 mb-6">
+        {/* By Account / By Post pills */}
+        {(["account", "post"] as const).map(t => (
+          <button key={t} onClick={() => setSubTab(t)}
             className="px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200"
             style={{
-              backgroundColor: subTab === t.key ? PINK : "rgba(255,255,255,0.06)",
-              color: subTab === t.key ? "#fff" : "rgba(255,255,255,0.5)",
-            }}
-          >
-            {t.label}
+              backgroundColor: subTab === t ? PINK : "rgba(255,255,255,0.06)",
+              color: subTab === t ? "#fff" : "rgba(255,255,255,0.45)",
+            }}>
+            {t === "account" ? "By Account" : "By Post"}
           </button>
         ))}
-        {weekLabel && (
-          <span className="ml-auto text-xs text-white/30 self-center">
-            Week of {weekLabel}
+
+        {/* Sliding week/month toggle */}
+        <div className="ml-auto relative flex items-center rounded-full p-0.5"
+          style={{ background: "rgba(255,255,255,0.06)", gap: 0 }}>
+          <div className="absolute top-0.5 bottom-0.5 rounded-full transition-all duration-300 ease-in-out"
+            style={{
+              background: "rgba(255,255,255,0.12)",
+              width: "calc(50% - 2px)",
+              left: range === "week" ? "2px" : "calc(50%)",
+            }} />
+          {(["week", "month"] as const).map(r => (
+            <button key={r} onClick={() => setRange(r)}
+              className="relative z-10 px-4 py-1 rounded-full text-xs font-semibold transition-colors duration-200"
+              style={{ color: range === r ? "#fff" : "rgba(255,255,255,0.35)" }}>
+              {r === "week" ? "1W" : "1M"}
+            </button>
+          ))}
+        </div>
+
+        {sinceLabel && (
+          <span className="text-xs text-white/25">
+            {range === "week" ? `Week of ${sinceLabel}` : `Since ${sinceLabel}`}
           </span>
         )}
       </div>
@@ -254,39 +295,33 @@ function LeaderboardTab({ data, loading }: { data: LeaderboardData | null; loadi
       {loading && <LeaderboardSkeleton />}
 
       {!loading && data && subTab === "account" && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {data.byAccount.length === 0 && (
-            <p className="text-white/30 text-sm text-center py-12">No posts this week yet.</p>
+            <p className="text-white/30 text-sm text-center py-12">{emptyMsg}</p>
           )}
           {data.byAccount.map((row, i) => (
-            <div
-              key={`${row.account}-${row.platform}`}
+            <div key={`${row.account}-${row.platform}`}
               className="rounded-xl px-5 py-4 border flex items-center gap-4 transition-all duration-200"
               style={{
                 backgroundColor: i === 0 ? "rgba(232,46,106,0.06)" : "rgba(255,255,255,0.02)",
                 borderColor: i === 0 ? "rgba(232,46,106,0.2)" : "rgba(255,255,255,0.06)",
-              }}
-            >
+              }}>
               {/* Rank */}
               <div className="w-6 text-center flex-shrink-0">
-                {i === 0 ? (
-                  <span className="text-lg leading-none">🏆</span>
-                ) : (
-                  <span className="text-white/30 text-sm font-mono">{i + 1}</span>
-                )}
+                {i === 0 ? <span className="text-lg">🏆</span>
+                  : <span className="text-white/30 text-sm font-mono">{i + 1}</span>}
               </div>
 
-              {/* Platform dot */}
-              <PlatformDot platform={row.platform} />
-
-              {/* Account + client */}
+              {/* Account + client · platform */}
               <div className="flex-1 min-w-0">
-                <div className="flex items-baseline gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="font-bold text-white text-sm">{row.account}</span>
-                  <span className="text-white/35 text-xs">{row.client}</span>
+                  <span className="text-white/25 text-xs">·</span>
+                  <span className="text-white/40 text-xs">{row.client}</span>
+                  <PlatformBadge platform={row.platform} />
                 </div>
                 {row.top_caption && (
-                  <p className="text-white/30 text-xs truncate mt-0.5">{row.top_caption}</p>
+                  <p className="text-white/25 text-xs truncate mt-0.5">{row.top_caption}</p>
                 )}
               </div>
 
@@ -294,10 +329,7 @@ function LeaderboardTab({ data, loading }: { data: LeaderboardData | null; loadi
               <div className="flex items-center gap-6 flex-shrink-0">
                 <div className="text-right">
                   <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Views</p>
-                  <p
-                    className="text-sm font-bold tabular-nums"
-                    style={{ color: i === 0 ? PINK : "#fff" }}
-                  >
+                  <p className="text-sm font-bold tabular-nums" style={{ color: i === 0 ? PINK : "#fff" }}>
                     {fmt(row.views)}
                   </p>
                 </div>
@@ -312,30 +344,25 @@ function LeaderboardTab({ data, loading }: { data: LeaderboardData | null; loadi
       )}
 
       {!loading && data && subTab === "post" && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {data.byPost.length === 0 && (
-            <p className="text-white/30 text-sm text-center py-12">No posts this week yet.</p>
+            <p className="text-white/30 text-sm text-center py-12">{emptyMsg}</p>
           )}
           {data.byPost.map((row, i) => (
-            <div
-              key={`${row.post_url ?? i}-${i}`}
+            <div key={`${row.post_url ?? i}-${i}`}
               className="rounded-xl px-5 py-4 border flex items-center gap-4 transition-all duration-200"
               style={{
                 backgroundColor: i === 0 ? "rgba(232,46,106,0.06)" : "rgba(255,255,255,0.02)",
                 borderColor: i === 0 ? "rgba(232,46,106,0.2)" : "rgba(255,255,255,0.06)",
-              }}
-            >
+              }}>
               {/* Rank */}
               <div className="w-6 text-center flex-shrink-0">
-                {i === 0 ? (
-                  <span className="text-lg leading-none">🏆</span>
-                ) : (
-                  <span className="text-white/30 text-sm font-mono">{i + 1}</span>
-                )}
+                {i === 0 ? <span className="text-lg">🏆</span>
+                  : <span className="text-white/30 text-sm font-mono">{i + 1}</span>}
               </div>
 
-              {/* Platform dot */}
-              <PlatformDot platform={row.platform} />
+              {/* Platform badge */}
+              <PlatformBadge platform={row.platform} />
 
               {/* Caption + account */}
               <div className="flex-1 min-w-0">
@@ -395,11 +422,6 @@ export default function OverviewPage() {
   const [headerVisible, setHeaderVisible] = useState(false);
   const [view, setView] = useState<"overview" | "leaderboard">("overview");
 
-  // Leaderboard state — lazy loaded on first open
-  const [lbData, setLbData] = useState<LeaderboardData | null>(null);
-  const [lbLoading, setLbLoading] = useState(false);
-  const lbFetched = useRef(false);
-
   useEffect(() => {
     setTimeout(() => setHeaderVisible(true), 50);
     fetch("/api/overview")
@@ -408,16 +430,9 @@ export default function OverviewPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  function handleLeaderboardClick() {
-    setView("leaderboard");
-    if (!lbFetched.current) {
-      lbFetched.current = true;
-      setLbLoading(true);
-      fetch("/api/leaderboard")
-        .then((r) => r.json())
-        .then((d) => { setLbData(d); setLbLoading(false); })
-        .catch(() => setLbLoading(false));
-    }
+  async function fetchLeaderboard(range: "week" | "month"): Promise<LeaderboardData> {
+    const r = await fetch(`/api/leaderboard?range=${range}`);
+    return r.json();
   }
 
   const totalViews = data.reduce((s, r) => s + r.views, 0);
@@ -464,7 +479,7 @@ export default function OverviewPage() {
           {mainTabs.map((t) => (
             <button
               key={t.key}
-              onClick={() => t.key === "leaderboard" ? handleLeaderboardClick() : setView("overview")}
+              onClick={() => setView(t.key)}
               className="px-5 py-2 rounded-full text-sm font-medium transition-all duration-200"
               style={{
                 backgroundColor: view === t.key ? PINK : "rgba(255,255,255,0.06)",
@@ -516,7 +531,7 @@ export default function OverviewPage() {
 
         {/* Leaderboard tab content */}
         {view === "leaderboard" && (
-          <LeaderboardTab data={lbData} loading={lbLoading} />
+          <LeaderboardTab onFetch={fetchLeaderboard} />
         )}
 
         <p className="animate-fade-in text-white/15 text-xs text-right mt-8"

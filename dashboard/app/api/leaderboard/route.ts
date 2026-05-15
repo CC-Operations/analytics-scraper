@@ -1,14 +1,18 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 
-export async function GET() {
-  // Compute the Monday of the current week (week starts Monday)
-  const weekStartQuery = await pool.query(`
-    SELECT date_trunc('week', CURRENT_DATE)::date AS week_start
-  `);
-  const weekStart: string = weekStartQuery.rows[0].week_start;
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url);
+  const range = searchParams.get("range") === "month" ? "month" : "week";
 
-  // By account: total views, posts, and top caption for this week
+  // Compute the start date
+  const sinceQuery = await pool.query(
+    range === "week"
+      ? `SELECT date_trunc('week', CURRENT_DATE)::date AS since`
+      : `SELECT (CURRENT_DATE - INTERVAL '30 days')::date AS since`
+  );
+  const since: string = sinceQuery.rows[0].since;
+
   const byAccountResult = await pool.query(`
     SELECT
       account,
@@ -30,9 +34,8 @@ export async function GET() {
       AND posted_date >= $1
     GROUP BY account, client, platform
     ORDER BY views DESC
-  `, [weekStart]);
+  `, [since]);
 
-  // By post: individual posts sorted by views
   const byPostResult = await pool.query(`
     SELECT
       account,
@@ -49,11 +52,12 @@ export async function GET() {
       AND posted_date >= $1
     ORDER BY views DESC NULLS LAST
     LIMIT 50
-  `, [weekStart]);
+  `, [since]);
 
   return NextResponse.json({
     byAccount: byAccountResult.rows,
     byPost: byPostResult.rows,
-    weekStart,
+    since,
+    range,
   });
 }
