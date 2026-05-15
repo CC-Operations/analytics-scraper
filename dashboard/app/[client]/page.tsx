@@ -618,7 +618,7 @@ export default function ClientPage() {
           <>
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-              <StatCard label="Posts" value={displayCounted.length} weekVal={weekPosts} prevWeekVal={prevWeekPosts} />
+              <StatCard label="Posts" value={displayCounted.length} />
               <StatCard label="Total Views" value={fmt(totalViews)} weekVal={weekViews} prevWeekVal={prevWeekViews} />
               <StatCard label="Total Likes" value={fmt(totalLikes)} weekVal={weekLikes} prevWeekVal={prevWeekLikes} />
               <StatCard label="Avg Views" value={fmt(avgViews)} />

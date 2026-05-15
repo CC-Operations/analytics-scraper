@@ -216,7 +216,7 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
 
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "Posts", value: fmt(summary.posts), wk: summary.week_posts, pwk: summary.prev_week_posts },
+            { label: "Posts", value: fmt(summary.posts), wk: 0, pwk: 0 },
             { label: "Views", value: fmt(summary.views), wk: summary.week_views, pwk: summary.prev_week_views },
             { label: "Likes", value: fmt(summary.likes), wk: summary.week_likes, pwk: summary.prev_week_likes },
             { label: "CPI", value: cpi != null ? `$${cpi.toFixed(3)}` : "—", wk: 0, pwk: 0 },
@@ -556,7 +556,7 @@ export default function OverviewPage() {
             {/* Agency stats */}
             {!loading && (
               <div className="grid grid-cols-3 gap-4 mb-8">
-                <AnimatedStat label="Total Posts" value={totalPosts} weekVal={totalWeekPosts} prevWeekVal={totalPrevWeekPosts} delay={0} />
+                <AnimatedStat label="Total Posts" value={totalPosts} delay={0} />
                 <AnimatedStat label="Total Views" value={totalViews} weekVal={totalWeekViews} prevWeekVal={totalPrevWeekViews} delay={80} />
                 <AnimatedStat label="Total Likes" value={totalLikes} weekVal={totalWeekLikes} prevWeekVal={totalPrevWeekLikes} delay={160} />
               </div>
