@@ -319,4 +319,57 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    port = int(os.environ.get("PORT", 0))
+    if port:
+        # ── Web-server mode (Railway web service) ─────────────────────────────
+        from flask import Flask, request, jsonify
+        import threading
+
+        app = Flask(__name__)
+        _scrape_lock = threading.Lock()
+        _scrape_running = False
+
+        def run_scrape():
+            global _scrape_running
+            with _scrape_lock:
+                _scrape_running = True
+            try:
+                main()
+            finally:
+                with _scrape_lock:
+                    _scrape_running = False
+
+        @app.route("/health")
+        def health():
+            return jsonify({"ok": True})
+
+        @app.route("/refresh", methods=["POST"])
+        def refresh():
+            secret = os.environ.get("REFRESH_SECRET", "")
+            auth   = request.headers.get("Authorization", "")
+            if secret and auth != f"Bearer {secret}":
+                return jsonify({"error": "unauthorized"}), 401
+            with _scrape_lock:
+                already = _scrape_running
+            if already:
+                return jsonify({"status": "already_running"})
+            threading.Thread(target=run_scrape, daemon=True).start()
+            return jsonify({"status": "started"})
+
+        # Internal 8-hour scheduler
+        def _scheduler():
+            while True:
+                time.sleep(8 * 3600)
+                with _scrape_lock:
+                    if not _scrape_running:
+                        threading.Thread(target=run_scrape, daemon=True).start()
+
+        # Boot: run initial scrape + start scheduler
+        threading.Thread(target=run_scrape, daemon=True).start()
+        threading.Thread(target=_scheduler, daemon=True).start()
+
+        print(f"Starting web server on port {port}")
+        app.run(host="0.0.0.0", port=port, use_reloader=False)
+    else:
+        # ── Direct / legacy cron mode ──────────────────────────────────────────
+        main()

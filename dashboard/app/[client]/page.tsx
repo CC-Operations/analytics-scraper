@@ -404,6 +404,7 @@ export default function ClientPage() {
   const [chartRange1, setChartRange1] = useState("All");
   const [viewMode, setViewMode] = useState<ViewMode>("all");
   const [showExport, setShowExport] = useState(false);
+  const [refreshState, setRefreshState] = useState<"idle" | "loading" | "done" | "error">("idle");
 
   useEffect(() => {
     setLoading(true);
@@ -474,6 +475,32 @@ export default function ClientPage() {
                 ⊞ Present
               </button>
             )}
+            <button
+              onClick={async () => {
+                setRefreshState("loading");
+                try {
+                  const res = await fetch("/api/refresh", { method: "POST" });
+                  const data = await res.json();
+                  if (data.status === "already_running") {
+                    setRefreshState("loading");
+                    setTimeout(() => setRefreshState("idle"), 4000);
+                  } else if (res.ok) {
+                    setRefreshState("done");
+                    setTimeout(() => setRefreshState("idle"), 5000);
+                  } else {
+                    setRefreshState("error");
+                    setTimeout(() => setRefreshState("idle"), 4000);
+                  }
+                } catch {
+                  setRefreshState("error");
+                  setTimeout(() => setRefreshState("idle"), 4000);
+                }
+              }}
+              disabled={refreshState === "loading"}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all border"
+              style={{ borderColor: "rgba(255,255,255,0.12)", color: refreshState === "done" ? "#4ade80" : refreshState === "error" ? "#f87171" : "rgba(255,255,255,0.45)", background: "transparent", opacity: refreshState === "loading" ? 0.6 : 1 }}>
+              {refreshState === "loading" ? "↻ Refreshing..." : refreshState === "done" ? "✓ Refreshing" : refreshState === "error" ? "✕ Error" : "↻ Refresh"}
+            </button>
             <button onClick={() => setShowExport(true)}
               className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all"
               style={{ backgroundColor: PINK, color: "white" }}>
