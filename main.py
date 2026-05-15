@@ -177,7 +177,7 @@ def scrape_instagram():
         post_date = (post.get("timestamp") or "")[:10]
         if start and post_date < start:
             continue
-        views = post.get("videoViewCount") or post.get("playCount")
+        views = post.get("videoPlayCount") or post.get("videoViewCount") or post.get("playCount")
         try:
             insert_post(
                 "instagram", client, account, sc,
