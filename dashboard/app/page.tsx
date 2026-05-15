@@ -55,6 +55,12 @@ type Row = {
   month_views: number;
   first_post: string | null;
   last_post: string | null;
+  week_views: number;
+  week_likes: number;
+  week_posts: number;
+  prev_week_views: number;
+  prev_week_likes: number;
+  prev_week_posts: number;
 };
 
 type ClientSummary = {
@@ -64,6 +70,12 @@ type ClientSummary = {
   likes: number;
   firstPost: string | null;
   platforms: string[];
+  week_views: number;
+  week_likes: number;
+  week_posts: number;
+  prev_week_views: number;
+  prev_week_likes: number;
+  prev_week_posts: number;
 };
 
 type LeaderboardAccount = {
@@ -94,7 +106,31 @@ type LeaderboardData = {
   range: "week" | "month";
 };
 
-function AnimatedStat({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
+function TrendBadge({ current, prev }: { current: number; prev: number }) {
+  if (prev === 0) return null;
+  const pct = ((current - prev) / prev) * 100;
+  const up = pct >= 0;
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "3px",
+      fontSize: "11px",
+      fontWeight: 700,
+      letterSpacing: "0.01em",
+      padding: "2px 7px",
+      borderRadius: "999px",
+      background: up ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.12)",
+      color: up ? "#4ade80" : "#f87171",
+    }}>
+      {up ? "▲" : "▼"} {up ? "+" : ""}{pct.toFixed(1)}%
+    </span>
+  );
+}
+
+function AnimatedStat({ label, value, weekVal = 0, prevWeekVal = 0, delay = 0 }: {
+  label: string; value: number; weekVal?: number; prevWeekVal?: number; delay?: number
+}) {
   const [started, setStarted] = useState(false);
   const [hovered, setHovered] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -123,6 +159,12 @@ function AnimatedStat({ label, value, delay = 0 }: { label: string; value: numbe
       }}>
       <p className="text-white/55 text-xs uppercase tracking-widest mb-3 font-medium">{label}</p>
       <p className="text-4xl font-bold text-white tabular-nums">{fmt(count)}</p>
+      <div className="mt-2.5 flex items-center gap-2">
+        <TrendBadge current={weekVal} prev={prevWeekVal} />
+        {prevWeekVal > 0 && (
+          <span className="text-white/20 text-[10px]">vs last 7d</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -174,14 +216,19 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
 
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "Posts", value: fmt(summary.posts) },
-            { label: "Views", value: fmt(summary.views) },
-            { label: "Likes", value: fmt(summary.likes) },
-            { label: "CPI", value: cpi != null ? `$${cpi.toFixed(3)}` : "—" },
+            { label: "Posts", value: fmt(summary.posts), wk: summary.week_posts, pwk: summary.prev_week_posts },
+            { label: "Views", value: fmt(summary.views), wk: summary.week_views, pwk: summary.prev_week_views },
+            { label: "Likes", value: fmt(summary.likes), wk: summary.week_likes, pwk: summary.prev_week_likes },
+            { label: "CPI", value: cpi != null ? `$${cpi.toFixed(3)}` : "—", wk: 0, pwk: 0 },
           ].map((s) => (
             <div key={s.label}>
               <p className="text-white/45 text-xs uppercase tracking-wider mb-1">{s.label}</p>
               <p className="text-lg font-bold text-white">{s.value}</p>
+              {s.pwk > 0 && (
+                <div className="mt-1">
+                  <TrendBadge current={s.wk} prev={s.pwk} />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -438,6 +485,12 @@ export default function OverviewPage() {
   const totalViews = data.reduce((s, r) => s + r.views, 0);
   const totalLikes = data.reduce((s, r) => s + r.likes, 0);
   const totalPosts = data.reduce((s, r) => s + r.posts, 0);
+  const totalWeekViews = data.reduce((s, r) => s + (r.week_views ?? 0), 0);
+  const totalWeekLikes = data.reduce((s, r) => s + (r.week_likes ?? 0), 0);
+  const totalWeekPosts = data.reduce((s, r) => s + (r.week_posts ?? 0), 0);
+  const totalPrevWeekViews = data.reduce((s, r) => s + (r.prev_week_views ?? 0), 0);
+  const totalPrevWeekLikes = data.reduce((s, r) => s + (r.prev_week_likes ?? 0), 0);
+  const totalPrevWeekPosts = data.reduce((s, r) => s + (r.prev_week_posts ?? 0), 0);
 
   const byClient: ClientSummary[] = CLIENTS.map((c) => {
     const rows = data.filter((r) => r.client.toLowerCase() === c.toLowerCase());
@@ -448,6 +501,12 @@ export default function OverviewPage() {
       likes: rows.reduce((s, r) => s + r.likes, 0),
       firstPost: rows.map(r => r.first_post).filter(Boolean).sort()[0] ?? null,
       platforms: [...new Set(rows.map((r) => r.platform))],
+      week_views: rows.reduce((s, r) => s + (r.week_views ?? 0), 0),
+      week_likes: rows.reduce((s, r) => s + (r.week_likes ?? 0), 0),
+      week_posts: rows.reduce((s, r) => s + (r.week_posts ?? 0), 0),
+      prev_week_views: rows.reduce((s, r) => s + (r.prev_week_views ?? 0), 0),
+      prev_week_likes: rows.reduce((s, r) => s + (r.prev_week_likes ?? 0), 0),
+      prev_week_posts: rows.reduce((s, r) => s + (r.prev_week_posts ?? 0), 0),
     };
   });
 
@@ -497,9 +556,9 @@ export default function OverviewPage() {
             {/* Agency stats */}
             {!loading && (
               <div className="grid grid-cols-3 gap-4 mb-8">
-                <AnimatedStat label="Total Posts" value={totalPosts} delay={0} />
-                <AnimatedStat label="Total Views" value={totalViews} delay={80} />
-                <AnimatedStat label="Total Likes" value={totalLikes} delay={160} />
+                <AnimatedStat label="Total Posts" value={totalPosts} weekVal={totalWeekPosts} prevWeekVal={totalPrevWeekPosts} delay={0} />
+                <AnimatedStat label="Total Views" value={totalViews} weekVal={totalWeekViews} prevWeekVal={totalPrevWeekViews} delay={80} />
+                <AnimatedStat label="Total Likes" value={totalLikes} weekVal={totalWeekLikes} prevWeekVal={totalPrevWeekLikes} delay={160} />
               </div>
             )}
 

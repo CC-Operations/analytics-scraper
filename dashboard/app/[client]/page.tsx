@@ -152,13 +152,47 @@ function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: View
   );
 }
 
+// ── Trend Badge ───────────────────────────────────────────────────────────────
+
+function TrendBadge({ current, prev }: { current: number; prev: number }) {
+  if (prev === 0) return null;
+  const pct = ((current - prev) / prev) * 100;
+  const up = pct >= 0;
+  return (
+    <span style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "3px",
+      fontSize: "11px",
+      fontWeight: 700,
+      padding: "2px 7px",
+      borderRadius: "999px",
+      background: up ? "rgba(34,197,94,0.12)" : "rgba(248,113,113,0.12)",
+      color: up ? "#4ade80" : "#f87171",
+    }}>
+      {up ? "▲" : "▼"} {up ? "+" : ""}{pct.toFixed(1)}%
+    </span>
+  );
+}
+
 // ── Stat Card ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
+function StatCard({ label, value, weekVal = 0, prevWeekVal = 0 }: {
+  label: string;
+  value: string | number;
+  weekVal?: number;
+  prevWeekVal?: number;
+}) {
   return (
     <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6 hover:border-white/10 transition-colors">
       <p className="text-white/60 text-xs uppercase tracking-widest mb-2 font-medium">{label}</p>
       <p className="text-3xl font-bold text-white">{value}</p>
+      {prevWeekVal > 0 && (
+        <div className="mt-2 flex items-center gap-2">
+          <TrendBadge current={weekVal} prev={prevWeekVal} />
+          <span className="text-white/20 text-[10px]">vs last 7d</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -424,8 +458,22 @@ export default function ClientPage() {
   // This month's counted posts
   const monthCounted = filterByMonth(allCounted);
 
-  // This week's counted posts
+  // This week's counted posts (last 7 days)
   const weekCounted = filterByWeek(allCounted);
+
+  // Prior week (7–14 days ago)
+  const prevWeekCounted = (() => {
+    const now14 = new Date();
+    now14.setDate(now14.getDate() - 14);
+    const cutoff14 = now14.toISOString().slice(0, 10);
+    const now7 = new Date();
+    now7.setDate(now7.getDate() - 7);
+    const cutoff7 = now7.toISOString().slice(0, 10);
+    return allCounted.filter((p) => {
+      const d = cleanDate(p.posted_date);
+      return d >= cutoff14 && d < cutoff7;
+    });
+  })();
 
   // What the stats + chart show depends on the toggle
   const displayCounted = viewMode === "all" ? allCounted : viewMode === "month" ? monthCounted : weekCounted;
@@ -433,6 +481,14 @@ export default function ClientPage() {
   const totalViews = displayCounted.reduce((s, p) => s + (p.views ?? 0), 0);
   const totalLikes = displayCounted.reduce((s, p) => s + (p.likes ?? 0), 0);
   const avgViews = displayCounted.length > 0 ? Math.round(totalViews / displayCounted.length) : 0;
+
+  // Week-over-week for trend badges (always week vs prev_week regardless of viewMode)
+  const weekViews = weekCounted.reduce((s, p) => s + (p.views ?? 0), 0);
+  const weekLikes = weekCounted.reduce((s, p) => s + (p.likes ?? 0), 0);
+  const weekPosts = weekCounted.length;
+  const prevWeekViews = prevWeekCounted.reduce((s, p) => s + (p.views ?? 0), 0);
+  const prevWeekLikes = prevWeekCounted.reduce((s, p) => s + (p.likes ?? 0), 0);
+  const prevWeekPosts = prevWeekCounted.length;
 
   async function handleToggle(id: number, newExcluded: boolean) {
     setPosts((prev) => prev.map((p) => p.id === id ? { ...p, excluded: newExcluded } : p));
@@ -562,9 +618,9 @@ export default function ClientPage() {
           <>
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-              <StatCard label="Posts" value={displayCounted.length} />
-              <StatCard label="Total Views" value={fmt(totalViews)} />
-              <StatCard label="Total Likes" value={fmt(totalLikes)} />
+              <StatCard label="Posts" value={displayCounted.length} weekVal={weekPosts} prevWeekVal={prevWeekPosts} />
+              <StatCard label="Total Views" value={fmt(totalViews)} weekVal={weekViews} prevWeekVal={prevWeekViews} />
+              <StatCard label="Total Likes" value={fmt(totalLikes)} weekVal={weekLikes} prevWeekVal={prevWeekLikes} />
               <StatCard label="Avg Views" value={fmt(avgViews)} />
             </div>
 
