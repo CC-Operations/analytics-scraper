@@ -102,8 +102,8 @@ type LeaderboardPost = {
 type LeaderboardData = {
   byAccount: LeaderboardAccount[];
   byPost: LeaderboardPost[];
-  since: string;
-  range: "week" | "month";
+  since: string | null;
+  range: "week" | "month" | "all";
 };
 
 function TrendBadge({ current, prev }: { current: number; prev: number }) {
@@ -281,9 +281,9 @@ function PlatformBadge({ platform }: { platform: string }) {
   );
 }
 
-function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month") => Promise<LeaderboardData> }) {
+function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month" | "all") => Promise<LeaderboardData> }) {
   const [subTab, setSubTab] = useState<"account" | "post">("account");
-  const [range, setRange] = useState<"week" | "month">("week");
+  const [range, setRange] = useState<"week" | "month" | "all">("week");
   const [data, setData] = useState<LeaderboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -296,7 +296,7 @@ function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month") => Pro
     ? new Date(data.since).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" })
     : null;
 
-  const emptyMsg = range === "week" ? "No posts this week yet." : "No posts this month yet.";
+  const emptyMsg = range === "week" ? "No posts this week yet." : range === "month" ? "No posts this month yet." : "No posts yet.";
 
   return (
     <div>
@@ -314,25 +314,25 @@ function LeaderboardTab({ onFetch }: { onFetch: (range: "week" | "month") => Pro
           </button>
         ))}
 
-        {/* Sliding week/month toggle */}
+        {/* Sliding week/month/all toggle */}
         <div className="ml-auto relative flex items-center rounded-full p-0.5"
           style={{ background: "rgba(255,255,255,0.06)", gap: 0 }}>
           <div className="absolute top-0.5 bottom-0.5 rounded-full transition-all duration-300 ease-in-out"
             style={{
               background: "rgba(255,255,255,0.12)",
-              width: "calc(50% - 2px)",
-              left: range === "week" ? "2px" : "calc(50%)",
+              width: "calc(33.333% - 2px)",
+              left: range === "week" ? "2px" : range === "month" ? "calc(33.333%)" : "calc(66.666%)",
             }} />
-          {(["week", "month"] as const).map(r => (
+          {(["week", "month", "all"] as const).map(r => (
             <button key={r} onClick={() => setRange(r)}
               className="relative z-10 px-4 py-1 rounded-full text-xs font-semibold transition-colors duration-200"
               style={{ color: range === r ? "#fff" : "rgba(255,255,255,0.35)" }}>
-              {r === "week" ? "1W" : "1M"}
+              {r === "week" ? "1W" : r === "month" ? "1M" : "All"}
             </button>
           ))}
         </div>
 
-        {sinceLabel && (
+        {sinceLabel && range !== "all" && (
           <span className="text-xs text-white/25">
             {range === "week" ? `Week of ${sinceLabel}` : `Since ${sinceLabel}`}
           </span>
@@ -477,7 +477,7 @@ export default function OverviewPage() {
       .catch(() => setLoading(false));
   }, []);
 
-  async function fetchLeaderboard(range: "week" | "month"): Promise<LeaderboardData> {
+  async function fetchLeaderboard(range: "week" | "month" | "all"): Promise<LeaderboardData> {
     const r = await fetch(`/api/leaderboard?range=${range}`);
     return r.json();
   }

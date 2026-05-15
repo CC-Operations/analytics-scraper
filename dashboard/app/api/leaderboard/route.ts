@@ -3,15 +3,23 @@ import pool from "@/lib/db";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const range = searchParams.get("range") === "month" ? "month" : "week";
+  const rawRange = searchParams.get("range");
+  const range: "week" | "month" | "all" =
+    rawRange === "month" ? "month" : rawRange === "all" ? "all" : "week";
 
-  // Compute the start date
-  const sinceQuery = await pool.query(
-    range === "week"
-      ? `SELECT date_trunc('week', CURRENT_DATE)::date AS since`
-      : `SELECT (CURRENT_DATE - INTERVAL '30 days')::date AS since`
-  );
-  const since: string = sinceQuery.rows[0].since;
+  // Compute the start date (null = no filter for all-time)
+  let since: string | null = null;
+  if (range !== "all") {
+    const sinceQuery = await pool.query(
+      range === "week"
+        ? `SELECT date_trunc('week', CURRENT_DATE)::date AS since`
+        : `SELECT (CURRENT_DATE - INTERVAL '30 days')::date AS since`
+    );
+    since = sinceQuery.rows[0].since;
+  }
+
+  const dateFilter = since ? `AND posted_date >= $1` : "";
+  const params = since ? [since] : [];
 
   const byAccountResult = await pool.query(`
     SELECT
@@ -25,16 +33,16 @@ export async function GET(req: Request) {
         FROM posts p2
         WHERE p2.account = p.account
           AND NOT COALESCE(p2.excluded, false)
-          AND p2.posted_date >= $1
+          ${since ? "AND p2.posted_date >= $1" : ""}
         ORDER BY p2.views DESC NULLS LAST
         LIMIT 1
       ) AS top_caption
     FROM posts p
     WHERE NOT COALESCE(excluded, false)
-      AND posted_date >= $1
+      ${dateFilter}
     GROUP BY account, client, platform
     ORDER BY views DESC
-  `, [since]);
+  `, params);
 
   const byPostResult = await pool.query(`
     SELECT
@@ -49,10 +57,10 @@ export async function GET(req: Request) {
       posted_date::text AS posted_date
     FROM posts
     WHERE NOT COALESCE(excluded, false)
-      AND posted_date >= $1
+      ${dateFilter}
     ORDER BY views DESC NULLS LAST
     LIMIT 50
-  `, [since]);
+  `, params);
 
   return NextResponse.json({
     byAccount: byAccountResult.rows,
