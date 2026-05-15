@@ -160,7 +160,7 @@ def scrape_instagram():
             posts = run_actor("apify~instagram-scraper", {
                 "directUrls": [f"https://www.instagram.com/{h}/" for h in batch],
                 "resultsType": "posts",
-                "resultsLimit": 500,
+                "resultsLimit": 50,
             })
             all_posts.extend(posts)
             print(f"  → {len(posts)} posts")
@@ -202,7 +202,7 @@ def scrape_tiktok():
         try:
             posts = run_actor("clockworks~free-tiktok-scraper", {
                 "profiles": [f"https://www.tiktok.com/@{acct['handle']}"],
-                "resultsPerPage": 200,
+                "resultsPerPage": 50,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -272,7 +272,7 @@ def scrape_twitter():
         try:
             posts = run_actor("apidojo~tweet-scraper", {
                 "startUrls": [f"https://x.com/{acct['handle']}"],
-                "maxItems": 200,
+                "maxItems": 50,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -353,10 +353,10 @@ if __name__ == "__main__":
         threading.Thread(target=run_scrape, daemon=True).start()
         return jsonify({"status": "started"})
 
-    # Internal 8-hour scheduler
+    # Internal 24-hour scheduler
     def _scheduler():
         while True:
-            time.sleep(8 * 3600)
+            time.sleep(24 * 3600)
             with _scrape_lock:
                 if not _scrape_running:
                     threading.Thread(target=run_scrape, daemon=True).start()
