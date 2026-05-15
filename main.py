@@ -144,7 +144,6 @@ def run_actor(actor_id, input_data, wait=300):
 
 def scrape_instagram():
     print("\n── Instagram ──")
-    existing = get_existing_keys("instagram")
     handles = [a["handle"] for a in INSTAGRAM_ACCOUNTS]
     start_map = {a["account"]: a["start_date"] for a in INSTAGRAM_ACCOUNTS}
 
@@ -161,7 +160,7 @@ def scrape_instagram():
             posts = run_actor("apify~instagram-scraper", {
                 "directUrls": [f"https://www.instagram.com/{h}/" for h in batch],
                 "resultsType": "posts",
-                "resultsLimit": 50,
+                "resultsLimit": 500,
             })
             all_posts.extend(posts)
             print(f"  → {len(posts)} posts")
@@ -171,7 +170,7 @@ def scrape_instagram():
     ok = fail = 0
     for post in all_posts:
         sc = post.get("shortCode")
-        if not sc or sc in existing:
+        if not sc:
             continue
         client, account = acct_for(post.get("inputUrl"))
         start = start_map.get(account)
@@ -198,14 +197,12 @@ def scrape_instagram():
 
 def scrape_tiktok():
     print("\n── TikTok ──")
-    existing = get_existing_keys("tiktok")
-
     for acct in TIKTOK_ACCOUNTS:
         print(f"  Scraping: {acct['handle']}")
         try:
             posts = run_actor("clockworks~free-tiktok-scraper", {
                 "profiles": [f"https://www.tiktok.com/@{acct['handle']}"],
-                "resultsPerPage": 20,
+                "resultsPerPage": 200,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -214,7 +211,7 @@ def scrape_tiktok():
         ok = fail = 0
         for post in posts:
             sc = str(post.get("id") or "")
-            if not sc or sc in existing:
+            if not sc:
                 continue
             post_date = None
             ts = post.get("createTime")
@@ -270,14 +267,12 @@ def parse_tweet_date(raw):
 
 def scrape_twitter():
     print("\n── Twitter/X ──")
-    existing = get_existing_keys("twitter")
-
     for acct in TWITTER_ACCOUNTS:
         print(f"  Scraping: {acct['handle']}")
         try:
             posts = run_actor("apidojo~tweet-scraper", {
                 "startUrls": [f"https://x.com/{acct['handle']}"],
-                "maxItems": 20,
+                "maxItems": 200,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -286,7 +281,7 @@ def scrape_twitter():
         ok = fail = 0
         for post in posts:
             sc = str(post.get("id") or "")
-            if not sc or sc in existing:
+            if not sc:
                 continue
             post_date = parse_tweet_date(post.get("createdAt"))
             if acct["start_date"] and post_date and post_date < acct["start_date"]:
