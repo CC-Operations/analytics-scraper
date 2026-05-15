@@ -66,6 +66,33 @@ type ClientSummary = {
   platforms: string[];
 };
 
+type LeaderboardAccount = {
+  account: string;
+  client: string;
+  platform: string;
+  views: number;
+  posts: number;
+  top_caption: string | null;
+};
+
+type LeaderboardPost = {
+  account: string;
+  client: string;
+  platform: string;
+  caption: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  post_url: string | null;
+  posted_date: string | null;
+};
+
+type LeaderboardData = {
+  byAccount: LeaderboardAccount[];
+  byPost: LeaderboardPost[];
+  weekStart: string;
+};
+
 function AnimatedStat({ label, value, delay = 0 }: { label: string; value: number; delay?: number }) {
   const [started, setStarted] = useState(false);
   const [hovered, setHovered] = useState(false);
@@ -162,10 +189,216 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
   );
 }
 
+function PlatformDot({ platform }: { platform: string }) {
+  return (
+    <span
+      className="w-2 h-2 rounded-full inline-block flex-shrink-0"
+      style={{ backgroundColor: PLATFORM_COLORS[platform] ?? "#666" }}
+    />
+  );
+}
+
+function LeaderboardSkeleton() {
+  return (
+    <div className="space-y-3">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="rounded-xl p-4 border border-white/[0.04] bg-white/[0.02] animate-pulse flex gap-4 items-center">
+          <div className="w-6 h-4 bg-white/10 rounded" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-32 bg-white/10 rounded" />
+            <div className="h-3 w-48 bg-white/[0.06] rounded" />
+          </div>
+          <div className="h-5 w-16 bg-white/10 rounded" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function LeaderboardTab({ data, loading }: { data: LeaderboardData | null; loading: boolean }) {
+  const [subTab, setSubTab] = useState<"account" | "post">("account");
+
+  const subTabs: { key: "account" | "post"; label: string }[] = [
+    { key: "account", label: "By Account" },
+    { key: "post", label: "By Post" },
+  ];
+
+  const weekLabel = data?.weekStart
+    ? new Date(data.weekStart + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
+
+  return (
+    <div>
+      {/* Sub-tab bar */}
+      <div className="flex gap-2 mb-6">
+        {subTabs.map((t) => (
+          <button
+            key={t.key}
+            onClick={() => setSubTab(t.key)}
+            className="px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200"
+            style={{
+              backgroundColor: subTab === t.key ? PINK : "rgba(255,255,255,0.06)",
+              color: subTab === t.key ? "#fff" : "rgba(255,255,255,0.5)",
+            }}
+          >
+            {t.label}
+          </button>
+        ))}
+        {weekLabel && (
+          <span className="ml-auto text-xs text-white/30 self-center">
+            Week of {weekLabel}
+          </span>
+        )}
+      </div>
+
+      {loading && <LeaderboardSkeleton />}
+
+      {!loading && data && subTab === "account" && (
+        <div className="space-y-3">
+          {data.byAccount.length === 0 && (
+            <p className="text-white/30 text-sm text-center py-12">No posts this week yet.</p>
+          )}
+          {data.byAccount.map((row, i) => (
+            <div
+              key={`${row.account}-${row.platform}`}
+              className="rounded-xl px-5 py-4 border flex items-center gap-4 transition-all duration-200"
+              style={{
+                backgroundColor: i === 0 ? "rgba(232,46,106,0.06)" : "rgba(255,255,255,0.02)",
+                borderColor: i === 0 ? "rgba(232,46,106,0.2)" : "rgba(255,255,255,0.06)",
+              }}
+            >
+              {/* Rank */}
+              <div className="w-6 text-center flex-shrink-0">
+                {i === 0 ? (
+                  <span className="text-lg leading-none">🏆</span>
+                ) : (
+                  <span className="text-white/30 text-sm font-mono">{i + 1}</span>
+                )}
+              </div>
+
+              {/* Platform dot */}
+              <PlatformDot platform={row.platform} />
+
+              {/* Account + client */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-bold text-white text-sm">{row.account}</span>
+                  <span className="text-white/35 text-xs">{row.client}</span>
+                </div>
+                {row.top_caption && (
+                  <p className="text-white/30 text-xs truncate mt-0.5">{row.top_caption}</p>
+                )}
+              </div>
+
+              {/* Stats */}
+              <div className="flex items-center gap-6 flex-shrink-0">
+                <div className="text-right">
+                  <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Views</p>
+                  <p
+                    className="text-sm font-bold tabular-nums"
+                    style={{ color: i === 0 ? PINK : "#fff" }}
+                  >
+                    {fmt(row.views)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Posts</p>
+                  <p className="text-sm font-bold text-white tabular-nums">{row.posts}</p>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && data && subTab === "post" && (
+        <div className="space-y-3">
+          {data.byPost.length === 0 && (
+            <p className="text-white/30 text-sm text-center py-12">No posts this week yet.</p>
+          )}
+          {data.byPost.map((row, i) => (
+            <div
+              key={`${row.post_url ?? i}-${i}`}
+              className="rounded-xl px-5 py-4 border flex items-center gap-4 transition-all duration-200"
+              style={{
+                backgroundColor: i === 0 ? "rgba(232,46,106,0.06)" : "rgba(255,255,255,0.02)",
+                borderColor: i === 0 ? "rgba(232,46,106,0.2)" : "rgba(255,255,255,0.06)",
+              }}
+            >
+              {/* Rank */}
+              <div className="w-6 text-center flex-shrink-0">
+                {i === 0 ? (
+                  <span className="text-lg leading-none">🏆</span>
+                ) : (
+                  <span className="text-white/30 text-sm font-mono">{i + 1}</span>
+                )}
+              </div>
+
+              {/* Platform dot */}
+              <PlatformDot platform={row.platform} />
+
+              {/* Caption + account */}
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium truncate">
+                  {row.caption || <span className="text-white/30 italic">No caption</span>}
+                </p>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-white/35 text-xs">{row.account}</span>
+                  <span className="text-white/20 text-xs">·</span>
+                  <span className="text-white/25 text-xs">{row.posted_date ?? ""}</span>
+                </div>
+              </div>
+
+              {/* Stats */}
+              <div className="flex items-center gap-5 flex-shrink-0">
+                <div className="text-right">
+                  <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Views</p>
+                  <p
+                    className="text-sm font-bold tabular-nums"
+                    style={{ color: i === 0 ? PINK : "#fff" }}
+                  >
+                    {fmt(row.views)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Likes</p>
+                  <p className="text-sm font-bold text-white tabular-nums">{fmt(row.likes)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-white/35 uppercase tracking-wider mb-0.5">Cmts</p>
+                  <p className="text-sm font-bold text-white tabular-nums">{fmt(row.comments)}</p>
+                </div>
+                {row.post_url && (
+                  <a
+                    href={row.post_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-white/30 hover:text-white transition-colors text-sm"
+                    title="Open post"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    ↗
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function OverviewPage() {
   const [data, setData] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(false);
+  const [view, setView] = useState<"overview" | "leaderboard">("overview");
+
+  // Leaderboard state — lazy loaded on first open
+  const [lbData, setLbData] = useState<LeaderboardData | null>(null);
+  const [lbLoading, setLbLoading] = useState(false);
+  const lbFetched = useRef(false);
 
   useEffect(() => {
     setTimeout(() => setHeaderVisible(true), 50);
@@ -174,6 +407,18 @@ export default function OverviewPage() {
       .then((d) => { setData(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
+
+  function handleLeaderboardClick() {
+    setView("leaderboard");
+    if (!lbFetched.current) {
+      lbFetched.current = true;
+      setLbLoading(true);
+      fetch("/api/leaderboard")
+        .then((r) => r.json())
+        .then((d) => { setLbData(d); setLbLoading(false); })
+        .catch(() => setLbLoading(false));
+    }
+  }
 
   const totalViews = data.reduce((s, r) => s + r.views, 0);
   const totalLikes = data.reduce((s, r) => s + r.likes, 0);
@@ -191,12 +436,17 @@ export default function OverviewPage() {
     };
   });
 
+  const mainTabs = [
+    { key: "overview" as const, label: "Overview" },
+    { key: "leaderboard" as const, label: "🏆 Leaderboard" },
+  ];
+
   return (
     <div className="min-h-screen bg-black text-white">
       <div className="max-w-7xl mx-auto px-6 py-12">
 
         {/* Header */}
-        <div className="mb-10"
+        <div className="mb-8"
           style={{
             opacity: headerVisible ? 1 : 0,
             transform: headerVisible ? "translateY(0)" : "translateY(12px)",
@@ -209,38 +459,65 @@ export default function OverviewPage() {
           <p className="text-white/40 text-sm">All clients · All platforms</p>
         </div>
 
-        {/* Agency stats */}
-        {!loading && (
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <AnimatedStat label="Total Posts" value={totalPosts} delay={0} />
-            <AnimatedStat label="Total Views" value={totalViews} delay={80} />
-            <AnimatedStat label="Total Likes" value={totalLikes} delay={160} />
-          </div>
-        )}
-
-        {loading && (
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-8 animate-pulse">
-                <div className="h-3 w-20 bg-white/10 rounded mb-4" />
-                <div className="h-9 w-28 bg-white/10 rounded" />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Clients */}
-        <div>
-          <p className="animate-fade-up text-white/50 text-xs uppercase tracking-widest font-medium mb-4"
-            style={{ animationDelay: "250ms", animationFillMode: "forwards" }}>
-            Clients
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {byClient.map((c, i) => (
-              <ClientCard key={c.client} summary={c} index={i} />
-            ))}
-          </div>
+        {/* Main tab bar */}
+        <div className="flex gap-2 mb-8">
+          {mainTabs.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => t.key === "leaderboard" ? handleLeaderboardClick() : setView("overview")}
+              className="px-5 py-2 rounded-full text-sm font-medium transition-all duration-200"
+              style={{
+                backgroundColor: view === t.key ? PINK : "rgba(255,255,255,0.06)",
+                color: view === t.key ? "#fff" : "rgba(255,255,255,0.5)",
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
+
+        {/* Overview tab content */}
+        {view === "overview" && (
+          <>
+            {/* Agency stats */}
+            {!loading && (
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                <AnimatedStat label="Total Posts" value={totalPosts} delay={0} />
+                <AnimatedStat label="Total Views" value={totalViews} delay={80} />
+                <AnimatedStat label="Total Likes" value={totalLikes} delay={160} />
+              </div>
+            )}
+
+            {loading && (
+              <div className="grid grid-cols-3 gap-4 mb-8">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="bg-white/[0.02] border border-white/[0.04] rounded-2xl p-8 animate-pulse">
+                    <div className="h-3 w-20 bg-white/10 rounded mb-4" />
+                    <div className="h-9 w-28 bg-white/10 rounded" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Clients */}
+            <div>
+              <p className="animate-fade-up text-white/50 text-xs uppercase tracking-widest font-medium mb-4"
+                style={{ animationDelay: "250ms", animationFillMode: "forwards" }}>
+                Clients
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {byClient.map((c, i) => (
+                  <ClientCard key={c.client} summary={c} index={i} />
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* Leaderboard tab content */}
+        {view === "leaderboard" && (
+          <LeaderboardTab data={lbData} loading={lbLoading} />
+        )}
 
         <p className="animate-fade-in text-white/15 text-xs text-right mt-8"
           style={{ animationDelay: "700ms", animationFillMode: "forwards" }}>
