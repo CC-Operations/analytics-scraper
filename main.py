@@ -340,6 +340,21 @@ if __name__ == "__main__":
     def health():
         return jsonify({"ok": True})
 
+    @app.route("/send-reports", methods=["POST"])
+    def send_reports():
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        def run():
+            try:
+                from report_bot import sync as sync_reports
+                sync_reports()
+            except Exception as e:
+                print(f"Manual report error: {e}")
+        threading.Thread(target=run, daemon=True).start()
+        return jsonify({"status": "started"})
+
     @app.route("/refresh", methods=["POST"])
     def refresh():
         secret = os.environ.get("REFRESH_SECRET", "")
@@ -353,7 +368,7 @@ if __name__ == "__main__":
         threading.Thread(target=run_scrape, daemon=True).start()
         return jsonify({"status": "started"})
 
-    # Internal 24-hour scheduler
+    # Internal 24-hour scrape scheduler
     def _scheduler():
         while True:
             time.sleep(24 * 3600)
@@ -361,9 +376,38 @@ if __name__ == "__main__":
                 if not _scrape_running:
                     threading.Thread(target=run_scrape, daemon=True).start()
 
-    # Boot: run initial scrape + start scheduler
+    # Weekly report scheduler — fires Friday at 9am ET, checks hourly
+    _report_sent_date = [None]  # mutable container so inner fn can update it
+
+    def _weekly_report_scheduler():
+        while True:
+            try:
+                from zoneinfo import ZoneInfo
+                now_et = datetime.now(ZoneInfo("America/New_York"))
+            except Exception:
+                # Fallback: approximate ET as UTC-4 (EDT)
+                now_et = datetime.now(timezone.utc).replace(tzinfo=None)
+                now_et = datetime(now_et.year, now_et.month, now_et.day,
+                                  max(now_et.hour - 4, 0), now_et.minute)
+
+            is_friday = now_et.weekday() == 4
+            is_9am    = now_et.hour == 9
+            today_str = now_et.strftime("%Y-%m-%d")
+
+            if is_friday and is_9am and _report_sent_date[0] != today_str:
+                _report_sent_date[0] = today_str
+                try:
+                    from report_bot import sync as sync_reports
+                    sync_reports()
+                except Exception as e:
+                    print(f"Weekly report error: {e}")
+
+            time.sleep(3600)  # check every hour
+
+    # Boot: run initial scrape + start schedulers
     threading.Thread(target=run_scrape, daemon=True).start()
     threading.Thread(target=_scheduler, daemon=True).start()
+    threading.Thread(target=_weekly_report_scheduler, daemon=True).start()
 
     port = int(os.environ.get("PORT", 8080))
     print(f"Starting web server on port {port}")
