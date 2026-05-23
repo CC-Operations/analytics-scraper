@@ -64,14 +64,20 @@ def post_report(client: str, pdf_bytes: bytes, from_date: str, to_date: str):
     )
 
     try:
-        import io
-        slack.files_upload_v2(
-            channel=channel,
-            file=io.BytesIO(pdf_bytes),
-            filename=filename,
-            title=title,
-            initial_comment=comment,
-        )
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(pdf_bytes)
+            tmp_path = tmp.name
+        try:
+            slack.files_upload_v2(
+                channel=channel,
+                file=tmp_path,
+                filename=filename,
+                title=title,
+                initial_comment=comment,
+            )
+        finally:
+            os.unlink(tmp_path)
         print(f"    ✓ Posted to #{channel}")
     except SlackApiError as e:
         print(f"    ✗ Slack error ({channel}): {e.response['error']}")
