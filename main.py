@@ -378,6 +378,9 @@ if __name__ == "__main__":
             sys.stdout = old_stdout
             return jsonify({"status": "error", "error": str(e), "trace": traceback.format_exc(), "output": output})
 
+    _last_manual_refresh = [0.0]  # timestamp of last manual refresh
+    REFRESH_COOLDOWN_HOURS = 4
+
     @app.route("/refresh", methods=["POST"])
     def refresh():
         secret = os.environ.get("REFRESH_SECRET", "")
@@ -388,6 +391,12 @@ if __name__ == "__main__":
             already = _scrape_running
         if already:
             return jsonify({"status": "already_running"})
+        # Cooldown check — prevent burning Apify credits on rapid refreshes
+        elapsed_hours = (time.time() - _last_manual_refresh[0]) / 3600
+        if elapsed_hours < REFRESH_COOLDOWN_HOURS:
+            wait_mins = int((REFRESH_COOLDOWN_HOURS - elapsed_hours) * 60)
+            return jsonify({"status": "cooldown", "message": f"Last refresh was {int(elapsed_hours*60)}m ago. Try again in {wait_mins}m."})
+        _last_manual_refresh[0] = time.time()
         threading.Thread(target=run_scrape, daemon=True).start()
         return jsonify({"status": "started"})
 
