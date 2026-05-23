@@ -64,9 +64,10 @@ def post_report(client: str, pdf_bytes: bytes, from_date: str, to_date: str):
     )
 
     try:
+        import io
         slack.files_upload_v2(
             channel=channel,
-            content=pdf_bytes,
+            file=io.BytesIO(pdf_bytes),
             filename=filename,
             title=title,
             initial_comment=comment,
