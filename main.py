@@ -355,6 +355,29 @@ if __name__ == "__main__":
         threading.Thread(target=run, daemon=True).start()
         return jsonify({"status": "started"})
 
+    @app.route("/send-reports-debug", methods=["POST"])
+    def send_reports_debug():
+        """Runs synchronously and returns full output — for debugging only."""
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        import io, sys
+        buf = io.StringIO()
+        old_stdout = sys.stdout
+        sys.stdout = buf
+        try:
+            from report_bot import sync as sync_reports
+            sync_reports()
+            output = buf.getvalue()
+            sys.stdout = old_stdout
+            return jsonify({"status": "ok", "output": output})
+        except Exception as e:
+            import traceback
+            output = buf.getvalue()
+            sys.stdout = old_stdout
+            return jsonify({"status": "error", "error": str(e), "trace": traceback.format_exc(), "output": output})
+
     @app.route("/refresh", methods=["POST"])
     def refresh():
         secret = os.environ.get("REFRESH_SECRET", "")
