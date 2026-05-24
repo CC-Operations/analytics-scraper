@@ -2,8 +2,9 @@ import os
 import requests
 from datetime import date, timedelta
 
-SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN", "")
-DASHBOARD_URL   = os.environ.get("DASHBOARD_URL", "").rstrip("/")
+SLACK_BOT_TOKEN      = os.environ.get("SLACK_BOT_TOKEN", "")
+DASHBOARD_URL        = os.environ.get("DASHBOARD_URL", "").rstrip("/")
+VERCEL_BYPASS_SECRET = os.environ.get("VERCEL_BYPASS_SECRET", "")
 
 # Map client key → Slack channel name
 CLIENT_CHANNELS = {
@@ -54,12 +55,14 @@ def generate_pdf(client: str, from_date: str, to_date: str) -> bytes:
     """Render the report page headlessly and return PDF bytes."""
     from playwright.sync_api import sync_playwright
 
-    url = f"{DASHBOARD_URL}/{client}/report?from={from_date}&to={to_date}"
+    url = f"{DASHBOARD_URL}/{client}/report?from={from_date}&to={to_date}&showCPI=0&showChart=0"
     print(f"    Rendering {url}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
         page = browser.new_page(viewport={"width": 1280, "height": 900})
+        if VERCEL_BYPASS_SECRET:
+            page.set_extra_http_headers({"x-vercel-protection-bypass": VERCEL_BYPASS_SECRET})
         page.goto(url, wait_until="networkidle", timeout=60_000)
         page.wait_for_timeout(2500)
         pdf_bytes = page.pdf(

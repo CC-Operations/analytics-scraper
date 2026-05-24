@@ -79,11 +79,13 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
 
-  // Options
+  // Options — URL params override defaults (for headless PDF generation)
   const clientName = client.charAt(0).toUpperCase() + client.slice(1);
   const retainer = MONTHLY_RETAINER[client] ?? 0;
-  const [showCPI, setShowCPI] = useState(retainer > 0);
-  const [showChart, setShowChart] = useState(true);
+  const cpiParam   = searchParams.get("showCPI");
+  const chartParam = searchParams.get("showChart");
+  const [showCPI,   setShowCPI]   = useState(cpiParam   !== null ? cpiParam   === "1" : retainer > 0);
+  const [showChart, setShowChart] = useState(chartParam !== null ? chartParam === "1" : true);
 
   // Fetch current period
   useEffect(() => {
