@@ -21,14 +21,17 @@ def get_channel_id(channel_name: str) -> str | None:
     if channel_name in _channel_id_cache:
         return _channel_id_cache[channel_name]
 
-    r = requests.get(
-        "https://slack.com/api/conversations.list",
-        headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
-        params={"types": "public_channel,private_channel", "limit": 200},
-        timeout=15,
-    )
-    for ch in r.json().get("channels", []):
-        _channel_id_cache[ch["name"]] = ch["id"]
+    # Query private and public separately — Slack drops private channels
+    # when both types are combined in a single request.
+    for ch_type in ("private_channel", "public_channel"):
+        r = requests.get(
+            "https://slack.com/api/conversations.list",
+            headers={"Authorization": f"Bearer {SLACK_BOT_TOKEN}"},
+            params={"types": ch_type, "limit": 200},
+            timeout=15,
+        )
+        for ch in r.json().get("channels", []):
+            _channel_id_cache[ch["name"]] = ch["id"]
 
     result = _channel_id_cache.get(channel_name)
     if not result:
