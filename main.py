@@ -355,6 +355,32 @@ if __name__ == "__main__":
         threading.Thread(target=run, daemon=True).start()
         return jsonify({"status": "started"})
 
+    @app.route("/slack-debug", methods=["POST"])
+    def slack_debug():
+        """Check Slack token validity and channel list."""
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        import requests as req
+        token = os.environ.get("SLACK_BOT_TOKEN", "")
+        if not token:
+            return jsonify({"error": "SLACK_BOT_TOKEN not set"})
+        # Auth test
+        r_auth = req.get("https://slack.com/api/auth.test",
+                         headers={"Authorization": f"Bearer {token}"}, timeout=10)
+        # List channels
+        r_ch = req.get("https://slack.com/api/conversations.list",
+                       headers={"Authorization": f"Bearer {token}"},
+                       params={"types": "public_channel,private_channel", "limit": 200},
+                       timeout=15)
+        return jsonify({
+            "auth": r_auth.json(),
+            "channels_ok": r_ch.json().get("ok"),
+            "channels_error": r_ch.json().get("error"),
+            "channel_names": [c["name"] for c in r_ch.json().get("channels", [])],
+        })
+
     @app.route("/send-reports-debug", methods=["POST"])
     def send_reports_debug():
         """Runs synchronously and returns full output — for debugging only."""
