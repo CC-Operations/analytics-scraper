@@ -407,10 +407,12 @@ if __name__ == "__main__":
             # Check for Vercel login page marker in PDF text
             preview = pdf_bytes[:4000].decode("latin-1", errors="ignore")
             has_login = "Log in to Vercel" in preview or "Vercel" in preview[:500]
+            import base64
             return jsonify({
                 "size_kb": round(len(pdf_bytes) / 1024, 1),
                 "vercel_login_detected": has_login,
                 "ok": not has_login,
+                "pdf_b64": base64.b64encode(pdf_bytes).decode(),
             })
         except Exception as e:
             import traceback
