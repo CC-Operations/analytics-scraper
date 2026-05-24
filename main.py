@@ -374,11 +374,21 @@ if __name__ == "__main__":
                        headers={"Authorization": f"Bearer {token}"},
                        params={"types": "public_channel,private_channel", "limit": 200},
                        timeout=15)
+        # List private only
+        r_priv = req.get("https://slack.com/api/conversations.list",
+                         headers={"Authorization": f"Bearer {token}"},
+                         params={"types": "private_channel", "limit": 200},
+                         timeout=15)
         return jsonify({
             "auth": r_auth.json(),
             "channels_ok": r_ch.json().get("ok"),
             "channels_error": r_ch.json().get("error"),
             "channel_names": [c["name"] for c in r_ch.json().get("channels", [])],
+            "private_ok": r_priv.json().get("ok"),
+            "private_error": r_priv.json().get("error"),
+            "private_names": [c["name"] for c in r_priv.json().get("channels", [])],
+            "token_prefix": token[:16] + "...",
+            "scopes": r_ch.headers.get("x-oauth-scopes", "not-returned"),
         })
 
     @app.route("/send-reports-debug", methods=["POST"])
