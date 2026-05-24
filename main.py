@@ -408,10 +408,13 @@ if __name__ == "__main__":
             preview = pdf_bytes[:4000].decode("latin-1", errors="ignore")
             has_login = "Log in to Vercel" in preview or "Vercel" in preview[:500]
             import base64
+            bypass = os.environ.get("VERCEL_BYPASS_SECRET", "")
             return jsonify({
                 "size_kb": round(len(pdf_bytes) / 1024, 1),
                 "vercel_login_detected": has_login,
                 "ok": not has_login,
+                "bypass_secret_set": bool(bypass),
+                "bypass_secret_prefix": bypass[:6] + "..." if bypass else "NOT SET",
                 "pdf_b64": base64.b64encode(pdf_bytes).decode(),
             })
         except Exception as e:
