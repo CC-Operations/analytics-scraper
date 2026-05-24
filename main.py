@@ -391,6 +391,31 @@ if __name__ == "__main__":
             "scopes": r_ch.headers.get("x-oauth-scopes", "not-returned"),
         })
 
+    @app.route("/render-check", methods=["POST"])
+    def render_check():
+        """Renders ONE client PDF and returns size + content snippet — no Slack posting."""
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        client = request.json.get("client", "cosmos") if request.is_json else "cosmos"
+        from_date = request.json.get("from", "2026-05-18") if request.is_json else "2026-05-18"
+        to_date   = request.json.get("to",   "2026-05-22") if request.is_json else "2026-05-22"
+        try:
+            from report_bot import generate_pdf
+            pdf_bytes = generate_pdf(client, from_date, to_date)
+            # Check for Vercel login page marker in PDF text
+            preview = pdf_bytes[:4000].decode("latin-1", errors="ignore")
+            has_login = "Log in to Vercel" in preview or "Vercel" in preview[:500]
+            return jsonify({
+                "size_kb": round(len(pdf_bytes) / 1024, 1),
+                "vercel_login_detected": has_login,
+                "ok": not has_login,
+            })
+        except Exception as e:
+            import traceback
+            return jsonify({"error": str(e), "trace": traceback.format_exc()})
+
     @app.route("/send-reports-debug", methods=["POST"])
     def send_reports_debug():
         """Runs synchronously and returns full output — for debugging only."""
