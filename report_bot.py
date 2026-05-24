@@ -60,9 +60,11 @@ def generate_pdf(client: str, from_date: str, to_date: str) -> bytes:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(args=["--no-sandbox", "--disable-dev-shm-usage"])
-        page = browser.new_page(viewport={"width": 1280, "height": 900})
+        ctx_kwargs: dict = {"viewport": {"width": 1280, "height": 900}}
         if VERCEL_BYPASS_SECRET:
-            page.set_extra_http_headers({"x-vercel-protection-bypass": VERCEL_BYPASS_SECRET})
+            ctx_kwargs["extra_http_headers"] = {"x-vercel-protection-bypass": VERCEL_BYPASS_SECRET}
+        context = browser.new_context(**ctx_kwargs)
+        page = context.new_page()
         page.goto(url, wait_until="networkidle", timeout=60_000)
         page.wait_for_timeout(2500)
         pdf_bytes = page.pdf(
@@ -70,6 +72,7 @@ def generate_pdf(client: str, from_date: str, to_date: str) -> bytes:
             print_background=True,
             margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
         )
+        context.close()
         browser.close()
 
     return pdf_bytes
