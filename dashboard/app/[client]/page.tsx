@@ -440,6 +440,7 @@ export default function ClientPage() {
   const [showExport, setShowExport] = useState(false);
   const [refreshState, setRefreshState] = useState<"idle" | "loading" | "done" | "error" | "cooldown">("idle");
   const [refreshMsg, setRefreshMsg] = useState("");
+  const [manychatData, setManychatData] = useState<{ total: number; total_gained: number; total_lost: number; days: { date: string; gained: number; lost: number; total: number }[] } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -448,6 +449,10 @@ export default function ClientPage() {
       .then((r) => r.json())
       .then((data) => { setPosts(Array.isArray(data) ? data : []); setLoading(false); })
       .catch(() => setLoading(false));
+    fetch(`/api/manychat?client=${clientName}`)
+      .then((r) => r.json())
+      .then((data) => setManychatData(data))
+      .catch(() => {});
   }, [clientName]);
 
   const availablePlatforms = new Set(posts.map((p) => p.platform));
@@ -592,7 +597,7 @@ export default function ClientPage() {
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div className="flex gap-2 flex-wrap">
             {PLATFORMS.map((p) => {
-              const isAvailable = p === "Overview" || availablePlatforms.has(p.toLowerCase());
+              const isAvailable = p === "Overview" || p === "ManyChat" || availablePlatforms.has(p.toLowerCase());
               const isActive = activePlatform === p;
               const isComing = !isAvailable;
               return (
@@ -617,7 +622,69 @@ export default function ClientPage() {
           <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         </div>
 
-        {loading ? (
+        {activePlatform === "ManyChat" ? (
+          <div>
+            {/* ManyChat Subscriber Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Subscribers</div>
+                <div className="text-3xl font-bold" style={{ color: "#7b61ff" }}>
+                  {manychatData ? manychatData.total.toLocaleString() : "—"}
+                </div>
+              </div>
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Gained</div>
+                <div className="text-3xl font-bold text-green-400">
+                  +{manychatData ? manychatData.total_gained.toLocaleString() : "—"}
+                </div>
+              </div>
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Unsubscribed</div>
+                <div className="text-3xl font-bold text-red-400">
+                  -{manychatData ? manychatData.total_lost.toLocaleString() : "—"}
+                </div>
+              </div>
+            </div>
+
+            {/* Subscriber Growth Chart */}
+            {manychatData && manychatData.days.length > 0 ? (
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 mb-8">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-4">Subscriber Growth</div>
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={manychatData.days} barSize={12}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="gained" name="Subscribed" fill="#7b61ff" radius={[3,3,0,0]} />
+                    <Bar dataKey="lost"   name="Unsubscribed" fill="rgba(248,113,113,0.6)" radius={[3,3,0,0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-12 mb-8 text-center">
+                <div className="text-white/20 text-sm mb-2">No subscriber data yet</div>
+                <div className="text-white/10 text-xs">Set up the ManyChat webhook to start tracking</div>
+                <div className="mt-4 text-white/30 text-xs font-mono bg-white/[0.03] rounded-lg p-3 text-left inline-block">
+                  POST https://analytics-scraper-production.up.railway.app/webhook/manychat/{client}
+                </div>
+              </div>
+            )}
+
+            {/* Setup instructions */}
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
+              <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-4">Webhook Setup</div>
+              <div className="text-white/50 text-sm space-y-2">
+                <p>In ManyChat, add an <strong className="text-white/70">External Request</strong> action to your Subscribe and Unsubscribe flows:</p>
+                <div className="font-mono text-xs bg-black/30 rounded-lg p-3 mt-2 text-white/60">
+                  POST https://analytics-scraper-production.up.railway.app/webhook/manychat/{client}<br/>
+                  {`{ "event": "subscribe", "id": "{{user_id}}", "first_name": "{{first_name}}" }`}
+                </div>
+                <p className="text-white/30 text-xs mt-2">For unsubscribes, set <code className="text-white/50">"event": "unsubscribe"</code></p>
+              </div>
+            </div>
+          </div>
+        ) : loading ? (
           <div className="flex items-center justify-center h-64 text-white/20">Loading...</div>
         ) : (
           <>

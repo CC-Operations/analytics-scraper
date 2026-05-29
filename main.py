@@ -79,6 +79,25 @@ def setup_db():
                 END $$;
             """)
         conn.commit()
+
+        # ManyChat subscribers table
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS manychat_subscribers (
+                    id SERIAL PRIMARY KEY,
+                    client TEXT NOT NULL,
+                    event_type TEXT NOT NULL,
+                    subscriber_id TEXT,
+                    first_name TEXT,
+                    last_name TEXT,
+                    received_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
+            cur.execute("""
+                CREATE INDEX IF NOT EXISTS idx_manychat_client_time
+                ON manychat_subscribers (client, received_at);
+            """)
+        conn.commit()
     print("  Database ready.")
 
 
@@ -339,6 +358,76 @@ if __name__ == "__main__":
     @app.route("/health")
     def health():
         return jsonify({"ok": True})
+
+    # ── ManyChat webhook ──────────────────────────────────────────────────────
+    @app.route("/webhook/manychat/<client>", methods=["POST"])
+    def manychat_webhook(client):
+        """Receives subscribe/unsubscribe events from ManyChat flows."""
+        client = client.lower()
+        if client not in ("cosmos", "poke", "wabi", "yahoo", "olive"):
+            return jsonify({"error": "unknown client"}), 400
+        data = request.get_json(silent=True) or {}
+        event_type    = data.get("event", "subscribe")
+        subscriber_id = str(data.get("id", ""))
+        first_name    = data.get("first_name", "")
+        last_name     = data.get("last_name", "")
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO manychat_subscribers
+                        (client, event_type, subscriber_id, first_name, last_name)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (client, event_type, subscriber_id, first_name, last_name))
+            conn.commit()
+        return jsonify({"ok": True})
+
+    @app.route("/api/manychat")
+    def manychat_stats():
+        """Returns subscriber growth data for a client."""
+        client = request.args.get("client", "").lower()
+        if not client:
+            return jsonify({"error": "client required"}), 400
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                # Daily net subscriber counts
+                cur.execute("""
+                    SELECT
+                        DATE(received_at) AS day,
+                        SUM(CASE WHEN event_type = 'subscribe'   THEN 1 ELSE 0 END) AS gained,
+                        SUM(CASE WHEN event_type = 'unsubscribe' THEN 1 ELSE 0 END) AS lost
+                    FROM manychat_subscribers
+                    WHERE client = %s
+                    GROUP BY day
+                    ORDER BY day
+                """, (client,))
+                rows = cur.fetchall()
+                # Running total
+                total = 0
+                days = []
+                for row in rows:
+                    total += row[1] - row[2]
+                    days.append({
+                        "date": row[0].isoformat(),
+                        "gained": row[1],
+                        "lost": row[2],
+                        "total": total,
+                    })
+                # All-time totals
+                cur.execute("""
+                    SELECT
+                        SUM(CASE WHEN event_type = 'subscribe'   THEN 1 ELSE 0 END),
+                        SUM(CASE WHEN event_type = 'unsubscribe' THEN 1 ELSE 0 END)
+                    FROM manychat_subscribers WHERE client = %s
+                """, (client,))
+                tot = cur.fetchone()
+                total_gained = tot[0] or 0
+                total_lost   = tot[1] or 0
+        return jsonify({
+            "total": total_gained - total_lost,
+            "total_gained": total_gained,
+            "total_lost": total_lost,
+            "days": days,
+        })
 
     @app.route("/send-reports", methods=["POST"])
     def send_reports():
