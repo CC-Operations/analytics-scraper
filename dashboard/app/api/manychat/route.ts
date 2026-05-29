@@ -30,11 +30,23 @@ export async function GET(req: NextRequest) {
     ORDER BY day
   `, [client]);
 
-  // Running total
-  let total = 0;
+  // Baseline snapshot
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS manychat_snapshots (
+      id SERIAL PRIMARY KEY, client TEXT NOT NULL UNIQUE,
+      baseline_count INTEGER NOT NULL DEFAULT 0, snapped_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `).catch(() => {});
+  const { rows: snap } = await pool.query(
+    `SELECT baseline_count FROM manychat_snapshots WHERE client = $1`, [client]
+  );
+  const baseline = snap[0]?.baseline_count ?? 0;
+
+  // Running total from baseline
+  let running = baseline;
   const days = rows.map(r => {
-    total += r.gained - r.lost;
-    return { date: r.day, gained: r.gained, lost: r.lost, total };
+    running += r.gained - r.lost;
+    return { date: r.day, gained: r.gained, lost: r.lost, total: running };
   });
 
   // All-time totals
@@ -45,10 +57,14 @@ export async function GET(req: NextRequest) {
     FROM manychat_subscribers WHERE client = $1
   `, [client]);
 
+  const gained = tot[0]?.gained ?? 0;
+  const lost   = tot[0]?.lost   ?? 0;
+
   return NextResponse.json({
-    total: (tot[0]?.gained ?? 0) - (tot[0]?.lost ?? 0),
-    total_gained: tot[0]?.gained ?? 0,
-    total_lost:   tot[0]?.lost   ?? 0,
+    total: baseline + gained - lost,
+    baseline,
+    total_gained: gained,
+    total_lost:   lost,
     days,
   });
 }

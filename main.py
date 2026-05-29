@@ -97,6 +97,15 @@ def setup_db():
                 CREATE INDEX IF NOT EXISTS idx_manychat_client_time
                 ON manychat_subscribers (client, received_at);
             """)
+            # Baseline snapshot table
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS manychat_snapshots (
+                    id SERIAL PRIMARY KEY,
+                    client TEXT NOT NULL UNIQUE,
+                    baseline_count INTEGER NOT NULL DEFAULT 0,
+                    snapped_at TIMESTAMPTZ DEFAULT NOW()
+                );
+            """)
         conn.commit()
     print("  Database ready.")
 
@@ -389,6 +398,11 @@ if __name__ == "__main__":
             return jsonify({"error": "client required"}), 400
         with get_db() as conn:
             with conn.cursor() as cur:
+                # Baseline snapshot
+                cur.execute("SELECT baseline_count FROM manychat_snapshots WHERE client = %s", (client,))
+                row = cur.fetchone()
+                baseline = row[0] if row else 0
+
                 # Daily net subscriber counts
                 cur.execute("""
                     SELECT
@@ -397,22 +411,15 @@ if __name__ == "__main__":
                         SUM(CASE WHEN event_type = 'unsubscribe' THEN 1 ELSE 0 END) AS lost
                     FROM manychat_subscribers
                     WHERE client = %s
-                    GROUP BY day
-                    ORDER BY day
+                    GROUP BY day ORDER BY day
                 """, (client,))
                 rows = cur.fetchall()
-                # Running total
-                total = 0
+                running = baseline
                 days = []
                 for row in rows:
-                    total += row[1] - row[2]
-                    days.append({
-                        "date": row[0].isoformat(),
-                        "gained": row[1],
-                        "lost": row[2],
-                        "total": total,
-                    })
-                # All-time totals
+                    running += row[1] - row[2]
+                    days.append({"date": row[0].isoformat(), "gained": row[1], "lost": row[2], "total": running})
+
                 cur.execute("""
                     SELECT
                         SUM(CASE WHEN event_type = 'subscribe'   THEN 1 ELSE 0 END),
@@ -420,14 +427,34 @@ if __name__ == "__main__":
                     FROM manychat_subscribers WHERE client = %s
                 """, (client,))
                 tot = cur.fetchone()
-                total_gained = tot[0] or 0
-                total_lost   = tot[1] or 0
+                gained = tot[0] or 0
+                lost   = tot[1] or 0
         return jsonify({
-            "total": total_gained - total_lost,
-            "total_gained": total_gained,
-            "total_lost": total_lost,
+            "total": baseline + gained - lost,
+            "baseline": baseline,
+            "total_gained": gained,
+            "total_lost": lost,
             "days": days,
         })
+
+    @app.route("/seed-manychat", methods=["POST"])
+    def seed_manychat():
+        """Seed a baseline subscriber count for a client."""
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        client = request.json.get("client", "").lower()
+        count  = int(request.json.get("count", 0))
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO manychat_snapshots (client, baseline_count)
+                    VALUES (%s, %s)
+                    ON CONFLICT (client) DO UPDATE SET baseline_count = EXCLUDED.baseline_count, snapped_at = NOW()
+                """, (client, count))
+            conn.commit()
+        return jsonify({"ok": True, "client": client, "baseline": count})
 
     @app.route("/send-reports", methods=["POST"])
     def send_reports():
