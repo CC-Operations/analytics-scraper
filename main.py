@@ -368,6 +368,35 @@ if __name__ == "__main__":
     def health():
         return jsonify({"ok": True})
 
+    @app.route("/api/manychat/baseline", methods=["POST"])
+    def set_manychat_baseline():
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        data   = request.get_json()
+        client = data.get("client", "").lower()
+        count  = int(data.get("count", 0))
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS manychat_snapshots (
+                        id SERIAL PRIMARY KEY,
+                        client TEXT NOT NULL UNIQUE,
+                        baseline_count INTEGER NOT NULL DEFAULT 0,
+                        snapped_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """)
+                cur.execute("""
+                    INSERT INTO manychat_snapshots (client, baseline_count)
+                    VALUES (%s, %s)
+                    ON CONFLICT (client) DO UPDATE SET
+                        baseline_count = EXCLUDED.baseline_count,
+                        snapped_at = NOW()
+                """, (client, count))
+            conn.commit()
+        return jsonify({"ok": True, "client": client, "baseline": count})
+
     # ── ManyChat webhook ──────────────────────────────────────────────────────
     @app.route("/webhook/manychat/<client>", methods=["POST"])
     def manychat_webhook(client):
