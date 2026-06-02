@@ -424,6 +424,85 @@ function PostsTable({ posts, onToggle }: { posts: Post[]; onToggle: (id: number,
   );
 }
 
+// ── ManyChat CSV Import ───────────────────────────────────────────────────────
+
+function ManyChatImport({ client, onImported }: { client: string; onImported: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+  const [result, setResult] = useState<{ inserted: number; skipped: number; total_rows: number } | null>(null);
+  const [errMsg, setErrMsg] = useState("");
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setStatus("loading");
+    setResult(null);
+    setErrMsg("");
+    const fd = new FormData();
+    fd.append("client", client);
+    fd.append("file", file);
+    try {
+      const res = await fetch("/api/manychat/import", { method: "POST", body: fd });
+      const data = await res.json();
+      if (data.ok) {
+        setStatus("done");
+        setResult(data);
+        onImported();
+      } else {
+        setStatus("error");
+        setErrMsg(data.error ?? "Import failed");
+      }
+    } catch {
+      setStatus("error");
+      setErrMsg("Network error");
+    }
+    e.target.value = "";
+  }
+
+  return (
+    <div className="mb-6">
+      {!open ? (
+        <button onClick={() => setOpen(true)}
+          className="text-[11px] text-white/25 hover:text-white/50 transition-colors underline underline-offset-2">
+          Import historical contacts from ManyChat CSV
+        </button>
+      ) : (
+        <div className="bg-white/[0.02] border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-3">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-sm font-semibold text-white/70">Import ManyChat CSV</p>
+              <p className="text-[11px] text-white/30 mt-0.5">
+                In ManyChat → Contacts → ⋯ → Export. Upload the downloaded CSV file.
+              </p>
+            </div>
+            <button onClick={() => { setOpen(false); setStatus("idle"); }} className="text-white/20 hover:text-white/50 text-lg leading-none">✕</button>
+          </div>
+
+          {status === "idle" || status === "loading" ? (
+            <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-dashed cursor-pointer transition-all ${status === "loading" ? "opacity-50 pointer-events-none" : "hover:border-white/20"}`}
+              style={{ borderColor: "rgba(255,255,255,0.1)" }}>
+              <input type="file" accept=".csv" className="hidden" onChange={handleFile} />
+              <span className="text-sm text-white/40">{status === "loading" ? "Importing…" : "Choose CSV file"}</span>
+            </label>
+          ) : status === "done" && result ? (
+            <div className="flex items-center gap-3 px-4 py-3 rounded-xl" style={{ background: "rgba(74,222,128,0.08)", border: "1px solid rgba(74,222,128,0.2)" }}>
+              <span className="text-green-400 text-lg">✓</span>
+              <div>
+                <p className="text-sm font-semibold text-green-400">{result.inserted.toLocaleString()} contacts imported</p>
+                <p className="text-[11px] text-white/30">{result.skipped} skipped (duplicates or no date) · {result.total_rows} total rows</p>
+              </div>
+            </div>
+          ) : (
+            <div className="px-4 py-3 rounded-xl" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)" }}>
+              <p className="text-sm text-red-400">{errMsg}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ClientPage() {
@@ -631,6 +710,12 @@ export default function ClientPage() {
 
         {activePlatform === "ManyChat" ? (
           <div>
+            {/* Import banner */}
+            <ManyChatImport client={client} onImported={() => {
+              fetch(`/api/manychat?client=${clientName}`)
+                .then(r => r.json()).then(setManychatData).catch(() => {});
+            }} />
+
             {/* DM Funnel Stats */}
             <div className="grid grid-cols-2 gap-3 mb-6">
               <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6">
