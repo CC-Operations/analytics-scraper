@@ -441,7 +441,13 @@ export default function ClientPage() {
   const [showExport, setShowExport] = useState(false);
   const [refreshState, setRefreshState] = useState<"idle" | "loading" | "done" | "error" | "cooldown">("idle");
   const [refreshMsg, setRefreshMsg] = useState("");
-  const [manychatData, setManychatData] = useState<{ total: number; total_gained: number; total_lost: number; days: { date: string; gained: number; lost: number; total: number }[] } | null>(null);
+  const [manychatData, setManychatData] = useState<{
+    total: number;
+    total_gained: number;
+    total_lost: number;
+    days: { date: string; gained: number; lost: number; total: number }[];
+    contacts: { id: string; name: string; date: string }[];
+  } | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -673,6 +679,32 @@ export default function ClientPage() {
                 </div>
               )}
             </div>
+
+            {/* Recent contacts */}
+            {manychatData && manychatData.contacts && manychatData.contacts.length > 0 && (
+              <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden mt-4">
+                <div className="px-6 py-4 border-b border-white/[0.06] flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest">Recent Contacts</p>
+                  <p className="text-[10px] text-white/20">showing {manychatData.contacts.length} most recent</p>
+                </div>
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-white/[0.06] text-white/40 text-[10px] uppercase tracking-widest">
+                      <th className="text-left px-6 py-3 font-medium">Name</th>
+                      <th className="text-right px-6 py-3 font-medium">Joined Funnel</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {manychatData.contacts.map((c, i) => (
+                      <tr key={c.id || i} className={`border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors ${i === manychatData.contacts.length - 1 ? "border-0" : ""}`}>
+                        <td className="px-6 py-3 text-white/80 font-medium">{c.name || <span className="text-white/20">Unknown</span>}</td>
+                        <td className="px-6 py-3 text-right text-white/30 font-mono text-xs">{c.date ? new Date(c.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-64 text-white/20">Loading...</div>

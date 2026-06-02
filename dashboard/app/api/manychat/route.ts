@@ -60,11 +60,26 @@ export async function GET(req: NextRequest) {
   const gained = tot[0]?.gained ?? 0;
   const lost   = tot[0]?.lost   ?? 0;
 
+  // Recent contacts (most recent 100 subscribers by name)
+  const { rows: contacts } = await pool.query(`
+    SELECT subscriber_id, first_name, last_name, received_at
+    FROM manychat_subscribers
+    WHERE client = $1 AND event_type = 'subscribe'
+      AND (first_name IS NOT NULL AND first_name <> '')
+    ORDER BY received_at DESC
+    LIMIT 100
+  `, [client]);
+
   return NextResponse.json({
     total: baseline + gained - lost,
     baseline,
     total_gained: gained,
     total_lost:   lost,
     days,
+    contacts: contacts.map(c => ({
+      id: c.subscriber_id,
+      name: [c.first_name, c.last_name].filter(Boolean).join(" "),
+      date: c.received_at,
+    })),
   });
 }
