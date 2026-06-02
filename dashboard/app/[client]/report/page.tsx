@@ -85,8 +85,10 @@ export default function ReportPage() {
   const retainer = MONTHLY_RETAINER[client] ?? 0;
   const cpiParam   = searchParams.get("showCPI");
   const chartParam = searchParams.get("showChart");
-  const [showCPI,   setShowCPI]   = useState(cpiParam   !== null ? cpiParam   === "1" : retainer > 0);
-  const [showChart, setShowChart] = useState(chartParam !== null ? chartParam === "1" : true);
+  const mcParam   = searchParams.get("showManyChat");
+  const [showCPI,      setShowCPI]      = useState(cpiParam   !== null ? cpiParam   === "1" : retainer > 0);
+  const [showChart,    setShowChart]    = useState(chartParam !== null ? chartParam === "1" : true);
+  const [showManyChat, setShowManyChat] = useState(mcParam    !== null ? mcParam    === "1" : true);
 
   // Fetch current period
   useEffect(() => {
@@ -141,7 +143,7 @@ export default function ReportPage() {
     })
     .reduce((s, d) => s + d.gained, 0) ?? 0;
   const manychatTotal = manychatData?.total ?? 0;
-  const showManychat = manychatTotal > 0;
+  const showManychat = manychatTotal > 0 && showManyChat;
 
   // ── Platform breakdown ──
   const platforms = ["instagram", "tiktok", "twitter"] as const;
@@ -260,6 +262,12 @@ export default function ReportPage() {
           <input type="checkbox" checked={showChart} onChange={e => setShowChart(e.target.checked)}
             style={{ accentColor: PINK, cursor: "pointer" }} />
           Show Performance Chart
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "rgba(255,255,255,0.65)", fontSize: 12 }}>
+          <input type="checkbox" checked={showManyChat} onChange={e => setShowManyChat(e.target.checked)}
+            disabled={manychatTotal === 0}
+            style={{ accentColor: PINK, cursor: "pointer" }} />
+          ManyChat Subscribers
         </label>
         <div style={{ marginLeft: "auto" }}>
           <button onClick={() => window.print()}
