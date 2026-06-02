@@ -70,6 +70,7 @@ type ClientSummary = {
   likes: number;
   firstPost: string | null;
   platforms: string[];
+  manychatTotal: number;
   week_views: number;
   week_likes: number;
   week_posts: number;
@@ -206,7 +207,15 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </span>
               ))}
-              {summary.platforms.length === 0 && <span className="text-xs text-white/30">No data yet</span>}
+              {summary.manychatTotal > 0 && (
+                <span className="flex items-center gap-1 text-xs" style={{ color: "#7b61ff" }}>
+                  <span className="w-1.5 h-1.5 rounded-full inline-block" style={{ backgroundColor: "#7b61ff" }} />
+                  ManyChat
+                </span>
+              )}
+              {summary.platforms.length === 0 && summary.manychatTotal === 0 && (
+                <span className="text-xs text-white/30">No data yet</span>
+              )}
             </div>
           </div>
           <span className="transition-all duration-300 text-lg"
@@ -473,6 +482,7 @@ export default function OverviewPage() {
   const [loading, setLoading] = useState(true);
   const [headerVisible, setHeaderVisible] = useState(false);
   const [view, setView] = useState<"overview" | "leaderboard">("overview");
+  const [manychatTotals, setManychatTotals] = useState<Record<string, number>>({});
 
   useEffect(() => {
     setTimeout(() => setHeaderVisible(true), 50);
@@ -480,6 +490,20 @@ export default function OverviewPage() {
       .then((r) => r.json())
       .then((d) => { setData(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
+
+    // Fetch ManyChat totals for all clients in parallel
+    Promise.all(
+      CLIENTS.map(c =>
+        fetch(`/api/manychat?client=${c}`)
+          .then(r => r.json())
+          .then(d => ({ client: c.toLowerCase(), total: d.total ?? 0 }))
+          .catch(() => ({ client: c.toLowerCase(), total: 0 }))
+      )
+    ).then(results => {
+      const totals: Record<string, number> = {};
+      for (const r of results) totals[r.client] = r.total;
+      setManychatTotals(totals);
+    });
   }, []);
 
   async function fetchLeaderboard(range: "week" | "month" | "all"): Promise<LeaderboardData> {
@@ -506,6 +530,7 @@ export default function OverviewPage() {
       likes: rows.reduce((s, r) => s + r.likes, 0),
       firstPost: rows.map(r => r.first_post).filter(Boolean).sort()[0] ?? null,
       platforms: [...new Set(rows.map((r) => r.platform))],
+      manychatTotal: manychatTotals[c.toLowerCase()] ?? 0,
       week_views: rows.reduce((s, r) => s + (r.week_views ?? 0), 0),
       week_likes: rows.reduce((s, r) => s + (r.week_likes ?? 0), 0),
       week_posts: rows.reduce((s, r) => s + (r.week_posts ?? 0), 0),
