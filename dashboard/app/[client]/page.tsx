@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   XAxis, YAxis, Tooltip, ResponsiveContainer,
-  CartesianGrid, BarChart, Bar,
+  CartesianGrid, BarChart, Bar, LineChart, Line,
 } from "recharts";
 
 const PINK = "#E82E6A";
@@ -27,6 +27,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   tiktok: "#69c9d0",
   twitter: "#1d9bf0",
   manychat: "#7b61ff",
+  "dm funnel": "#7b61ff",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -597,7 +598,7 @@ export default function ClientPage() {
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div className="flex gap-2 flex-wrap">
             {PLATFORMS.map((p) => {
-              const isAvailable = p === "Overview" || p === "ManyChat" || availablePlatforms.has(p.toLowerCase());
+              const isAvailable = p === "Overview" || p === "DM Funnel" || availablePlatforms.has(p.toLowerCase());
               const isActive = activePlatform === p;
               const isComing = !isAvailable;
               return (
@@ -622,46 +623,56 @@ export default function ClientPage() {
           <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         </div>
 
-        {activePlatform === "ManyChat" ? (
+        {activePlatform === "DM Funnel" ? (
           <div>
             {/* DM Funnel Stats */}
-            <div className="grid grid-cols-2 gap-3 mb-8">
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total in DM Funnel</div>
-                <div className="text-3xl font-bold" style={{ color: "#7b61ff" }}>
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">Total in DM Funnel</div>
+                <div className="text-4xl font-bold tabular-nums" style={{ color: "#7b61ff" }}>
                   {manychatData ? manychatData.total.toLocaleString() : "—"}
                 </div>
-                <div className="text-[11px] text-white/25 mt-1">people who've DM'd the bot</div>
+                <div className="text-[11px] text-white/25 mt-2">contacts who've engaged via DM</div>
               </div>
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">New This Period</div>
-                <div className="text-3xl font-bold text-green-400">
+              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-6">
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-3">New Contacts</div>
+                <div className="text-4xl font-bold tabular-nums" style={{ color: "#4ade80" }}>
                   +{manychatData ? manychatData.total_gained.toLocaleString() : "—"}
                 </div>
-                <div className="text-[11px] text-white/25 mt-1">new contacts since tracking started</div>
+                <div className="text-[11px] text-white/25 mt-2">tracked since setup</div>
               </div>
             </div>
 
-            {/* DM Funnel Growth Chart */}
-            {manychatData && manychatData.days.length > 0 ? (
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 mb-8">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-4">Daily DM Funnel Entries</div>
-                <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={manychatData.days.map(d => ({ ...d, date: d.date.slice(0, 10) }))} barSize={16}>
+            {/* Cumulative growth chart */}
+            <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
+              <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-5">Funnel Growth</div>
+              {manychatData && manychatData.days.length > 0 ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={manychatData.days.map(d => ({ ...d, date: d.date.slice(0, 10) }))} margin={{ top: 5, right: 10, left: 0, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis allowDecimals={false} tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [v, "New contacts"]} />
-                    <Bar dataKey="gained" name="New contacts" fill="#7b61ff" radius={[3,3,0,0]} />
-                  </BarChart>
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={(v) => fmt(v)}
+                      domain={["auto", "auto"]}
+                    />
+                    <Tooltip
+                      contentStyle={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }}
+                      formatter={(v: number) => [v.toLocaleString(), "Total contacts"]}
+                    />
+                    <Line dataKey="total" stroke="#7b61ff" strokeWidth={2.5} dot={false} name="Total contacts" />
+                  </LineChart>
                 </ResponsiveContainer>
-              </div>
-            ) : (
-              <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-12 mb-8 text-center">
-                <div className="text-white/20 text-sm mb-2">No data yet — waiting for first DM contact</div>
-                <div className="text-white/10 text-xs">New contacts will appear here automatically via Zapier</div>
-              </div>
-            )}
+              ) : (
+                <div className="flex flex-col items-center justify-center h-48 gap-2">
+                  <div className="text-white/20 text-sm">No data yet</div>
+                  <div className="text-white/10 text-xs">New contacts will appear here automatically via Zapier</div>
+                </div>
+              )}
+            </div>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-64 text-white/20">Loading...</div>
