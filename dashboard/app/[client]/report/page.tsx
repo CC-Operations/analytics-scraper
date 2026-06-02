@@ -78,6 +78,7 @@ export default function ReportPage() {
   const [priorPosts, setPriorPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState<string | null>(null);
+  const [manychatData, setManychatData] = useState<{ total: number; days: { date: string; gained: number }[] } | null>(null);
 
   // Options — URL params override defaults (for headless PDF generation)
   const clientName = client.charAt(0).toUpperCase() + client.slice(1);
@@ -95,6 +96,14 @@ export default function ReportPage() {
       .then(d => { setPosts(Array.isArray(d) ? d : []); setLoading(false); })
       .catch(() => setLoading(false));
   }, [clientName, from, to]);
+
+  // Fetch ManyChat data
+  useEffect(() => {
+    fetch(`/api/manychat?client=${clientName}`)
+      .then(r => r.json())
+      .then(d => setManychatData(d))
+      .catch(() => {});
+  }, [clientName]);
 
   // Fetch prior 4 weeks for chart context (non-blocking)
   useEffect(() => {
@@ -123,6 +132,16 @@ export default function ReportPage() {
     : 30;
   const periodRetainer = retainer * (days / 30);
   const cpi = retainer > 0 && totalViews > 0 ? periodRetainer / totalViews : null;
+
+  // ── ManyChat period stats ──
+  const manychatPeriodGained = manychatData?.days
+    .filter(d => {
+      const day = d.date.slice(0, 10);
+      return (!from || day >= from) && (!to || day <= to);
+    })
+    .reduce((s, d) => s + d.gained, 0) ?? 0;
+  const manychatTotal = manychatData?.total ?? 0;
+  const showManychat = manychatTotal > 0;
 
   // ── Platform breakdown ──
   const platforms = ["instagram", "tiktok", "twitter"] as const;
@@ -291,10 +310,10 @@ export default function ReportPage() {
         </div>
 
         {/* ── Platform Breakdown ── */}
-        {activePlatforms.length > 0 && (
+        {(activePlatforms.length > 0 || showManychat) && (
           <div style={{ marginBottom: 24 }}>
             <SectionLabel>Platform Breakdown</SectionLabel>
-            <div style={{ display: "grid", gridTemplateColumns: `repeat(${activePlatforms.length}, 1fr)`, gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: `repeat(${activePlatforms.length + (showManychat ? 1 : 0)}, 1fr)`, gap: 10 }}>
               {activePlatforms.map(pl => {
                 const cfg = PLATFORM_CONFIG[pl];
                 const data = byPlatform[pl];
@@ -319,6 +338,27 @@ export default function ReportPage() {
                   </div>
                 );
               })}
+
+              {/* ManyChat card */}
+              {showManychat && (
+                <div style={{ background: "rgba(123,97,255,0.06)", border: "1px solid rgba(123,97,255,0.2)", borderRadius: 10, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 12 }}>
+                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#7b61ff", flexShrink: 0 }} />
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#fff" }}>ManyChat</div>
+                    <div style={{ marginLeft: "auto", fontSize: 9, color: "rgba(255,255,255,0.35)", fontWeight: 600 }}>DM Funnel</div>
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <div>
+                      <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>New This Week</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#a78bfa" }}>+{manychatPeriodGained.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div style={{ color: "rgba(255,255,255,0.35)", fontSize: 8, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 3 }}>Total</div>
+                      <div style={{ fontSize: 15, fontWeight: 700 }}>{manychatTotal.toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
