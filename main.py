@@ -485,6 +485,37 @@ if __name__ == "__main__":
             conn.commit()
         return jsonify({"ok": True, "client": client, "baseline": count})
 
+    @app.route("/seed-manychat-history", methods=["POST"])
+    def seed_manychat_history():
+        """Bulk-insert historical subscribe events from a date+gained list."""
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        data   = request.get_json(silent=True) or {}
+        client = data.get("client", "").lower()
+        entries = data.get("entries", [])  # [{date: "YYYY-MM-DD", gained: N}]
+        if client not in ("cosmos", "poke", "wabi", "yahoo", "olive"):
+            return jsonify({"error": "unknown client"}), 400
+        inserted = 0
+        with get_db() as conn:
+            with conn.cursor() as cur:
+                for entry in entries:
+                    date_str = entry.get("date", "")
+                    gained   = int(entry.get("gained", 0))
+                    if not date_str or gained <= 0:
+                        continue
+                    # Insert `gained` anonymous subscribe events spread across the day
+                    for _ in range(gained):
+                        cur.execute("""
+                            INSERT INTO manychat_subscribers
+                                (client, event_type, subscriber_id, first_name, last_name, received_at)
+                            VALUES (%s, 'subscribe', '', '', '', %s::date)
+                        """, (client, date_str))
+                        inserted += 1
+            conn.commit()
+        return jsonify({"ok": True, "inserted": inserted})
+
     @app.route("/send-reports", methods=["POST"])
     def send_reports():
         secret = os.environ.get("REFRESH_SECRET", "")
