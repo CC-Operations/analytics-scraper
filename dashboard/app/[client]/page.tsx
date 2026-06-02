@@ -10,7 +10,7 @@ import {
 
 const PINK = "#E82E6A";
 const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo", "Olive"];
-const PLATFORMS = ["Overview", "Instagram", "TikTok", "Twitter", "ManyChat"];
+const PLATFORMS = ["Overview", "Instagram", "TikTok", "Twitter", "DM Funnel"];
 const TIME_RANGES = ["1D", "1W", "1M", "3M", "All"];
 
 // Monthly retainer per client in USD
@@ -624,65 +624,44 @@ export default function ClientPage() {
 
         {activePlatform === "ManyChat" ? (
           <div>
-            {/* ManyChat Subscriber Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-8">
+            {/* DM Funnel Stats */}
+            <div className="grid grid-cols-2 gap-3 mb-8">
               <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Subscribers</div>
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total in DM Funnel</div>
                 <div className="text-3xl font-bold" style={{ color: "#7b61ff" }}>
                   {manychatData ? manychatData.total.toLocaleString() : "—"}
                 </div>
+                <div className="text-[11px] text-white/25 mt-1">people who've DM'd the bot</div>
               </div>
               <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Gained</div>
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">New This Period</div>
                 <div className="text-3xl font-bold text-green-400">
                   +{manychatData ? manychatData.total_gained.toLocaleString() : "—"}
                 </div>
-              </div>
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-2">Total Unsubscribed</div>
-                <div className="text-3xl font-bold text-red-400">
-                  -{manychatData ? manychatData.total_lost.toLocaleString() : "—"}
-                </div>
+                <div className="text-[11px] text-white/25 mt-1">new contacts since tracking started</div>
               </div>
             </div>
 
-            {/* Subscriber Growth Chart */}
+            {/* DM Funnel Growth Chart */}
             {manychatData && manychatData.days.length > 0 ? (
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 mb-8">
-                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-4">Subscriber Growth</div>
+                <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-4">Daily DM Funnel Entries</div>
                 <ResponsiveContainer width="100%" height={220}>
-                  <BarChart data={manychatData.days} barSize={12}>
+                  <BarChart data={manychatData.days.map(d => ({ ...d, date: d.date.slice(0, 10) }))} barSize={16}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
-                    <Bar dataKey="gained" name="Subscribed" fill="#7b61ff" radius={[3,3,0,0]} />
-                    <Bar dataKey="lost"   name="Unsubscribed" fill="rgba(248,113,113,0.6)" radius={[3,3,0,0]} />
+                    <YAxis allowDecimals={false} tick={{ fill: "rgba(255,255,255,0.3)", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <Tooltip contentStyle={{ background: "#111", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} formatter={(v: number) => [v, "New contacts"]} />
+                    <Bar dataKey="gained" name="New contacts" fill="#7b61ff" radius={[3,3,0,0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             ) : (
               <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-12 mb-8 text-center">
-                <div className="text-white/20 text-sm mb-2">No subscriber data yet</div>
-                <div className="text-white/10 text-xs">Set up the ManyChat webhook to start tracking</div>
-                <div className="mt-4 text-white/30 text-xs font-mono bg-white/[0.03] rounded-lg p-3 text-left inline-block">
-                  POST https://analytics-scraper-production.up.railway.app/webhook/manychat/{client}
-                </div>
+                <div className="text-white/20 text-sm mb-2">No data yet — waiting for first DM contact</div>
+                <div className="text-white/10 text-xs">New contacts will appear here automatically via Zapier</div>
               </div>
             )}
-
-            {/* Setup instructions */}
-            <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
-              <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-4">Webhook Setup</div>
-              <div className="text-white/50 text-sm space-y-2">
-                <p>In ManyChat, add an <strong className="text-white/70">External Request</strong> action to your Subscribe and Unsubscribe flows:</p>
-                <div className="font-mono text-xs bg-black/30 rounded-lg p-3 mt-2 text-white/60">
-                  POST https://analytics-scraper-production.up.railway.app/webhook/manychat/{client}<br/>
-                  {`{ "event": "subscribe", "id": "{{user_id}}", "first_name": "{{first_name}}" }`}
-                </div>
-                <p className="text-white/30 text-xs mt-2">For unsubscribes, set <code className="text-white/50">"event": "unsubscribe"</code></p>
-              </div>
-            </div>
           </div>
         ) : loading ? (
           <div className="flex items-center justify-center h-64 text-white/20">Loading...</div>
