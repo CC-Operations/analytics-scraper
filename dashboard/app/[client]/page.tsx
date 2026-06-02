@@ -10,7 +10,7 @@ import {
 
 const PINK = "#E82E6A";
 const CLIENTS = ["Cosmos", "Poke", "Wabi", "Yahoo", "Olive"];
-const PLATFORMS = ["Overview", "Instagram", "TikTok", "Twitter", "DM Funnel"];
+const PLATFORMS = ["Overview", "Instagram", "TikTok", "Twitter", "ManyChat"];
 const TIME_RANGES = ["1D", "1W", "1M", "3M", "All"];
 
 // Monthly retainer per client in USD
@@ -604,7 +604,7 @@ export default function ClientPage() {
         <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <div className="flex gap-2 flex-wrap">
             {PLATFORMS.map((p) => {
-              const isAvailable = p === "Overview" || p === "DM Funnel" || availablePlatforms.has(p.toLowerCase());
+              const isAvailable = p === "Overview" || p === "ManyChat" || availablePlatforms.has(p.toLowerCase());
               const isActive = activePlatform === p;
               const isComing = !isAvailable;
               return (
@@ -629,7 +629,7 @@ export default function ClientPage() {
           <ViewModeToggle mode={viewMode} onChange={setViewMode} />
         </div>
 
-        {activePlatform === "DM Funnel" ? (
+        {activePlatform === "ManyChat" ? (
           <div>
             {/* DM Funnel Stats */}
             <div className="grid grid-cols-2 gap-3 mb-6">
