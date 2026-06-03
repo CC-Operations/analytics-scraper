@@ -163,7 +163,7 @@ def run_actor(actor_id, input_data, wait=300):
 
     items_resp = requests.get(
         f"https://api.apify.com/v2/datasets/{dataset_id}/items",
-        params={"token": APIFY_TOKEN, "limit": 200},
+        params={"token": APIFY_TOKEN, "limit": 1000},
     )
     items_resp.raise_for_status()
     return items_resp.json()
