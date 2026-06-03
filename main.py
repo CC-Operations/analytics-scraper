@@ -136,7 +136,7 @@ def insert_post(platform, client, account, shortcode, post_url, caption,
                     post_type  = COALESCE(EXCLUDED.post_type, posts.post_type),
                     posted_date = COALESCE(EXCLUDED.posted_date, posts.posted_date)
             """, (client, account, platform, shortcode, post_url,
-                  (caption or "")[:500], post_type, views, likes, comments, posted_date))
+                  (caption or "")[:100], post_type, views, likes, comments, posted_date))
         conn.commit()
 
 # ── Apify helper ──────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ def scrape_instagram():
             posts = run_actor("apify~instagram-scraper", {
                 "directUrls": [f"https://www.instagram.com/{h}/" for h in batch],
                 "resultsType": "posts",
-                "resultsLimit": 500,
+                "resultsLimit": 100,
             })
             all_posts.extend(posts)
             print(f"  → {len(posts)} posts")
@@ -230,7 +230,7 @@ def scrape_tiktok():
         try:
             posts = run_actor("clockworks~free-tiktok-scraper", {
                 "profiles": [f"https://www.tiktok.com/@{acct['handle']}"],
-                "resultsPerPage": 500,
+                "resultsPerPage": 100,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -300,7 +300,7 @@ def scrape_twitter():
         try:
             posts = run_actor("apidojo~tweet-scraper", {
                 "startUrls": [f"https://x.com/{acct['handle']}"],
-                "maxItems": 500,
+                "maxItems": 100,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -582,7 +582,7 @@ if __name__ == "__main__":
             pdf_bytes = generate_pdf(client, from_date, to_date)
             # Check for Vercel login page marker in PDF text
             preview = pdf_bytes[:4000].decode("latin-1", errors="ignore")
-            has_login = "Log in to Vercel" in preview or "Vercel" in preview[:500]
+            has_login = "Log in to Vercel" in preview or "Vercel" in preview[:100]
             import base64
             bypass = os.environ.get("VERCEL_BYPASS_SECRET", "")
             return jsonify({
