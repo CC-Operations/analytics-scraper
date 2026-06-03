@@ -567,6 +567,34 @@ if __name__ == "__main__":
             "scopes": r_ch.headers.get("x-oauth-scopes", "not-returned"),
         })
 
+    @app.route("/apify-debug", methods=["POST"])
+    def apify_debug():
+        """Run a small Instagram scrape for one account and return raw Apify data."""
+        secret = os.environ.get("REFRESH_SECRET", "")
+        auth   = request.headers.get("Authorization", "")
+        if secret and auth != f"Bearer {secret}":
+            return jsonify({"error": "unauthorized"}), 401
+        handle = (request.json or {}).get("handle", "cosmos")
+        try:
+            posts = run_actor("apify~instagram-scraper", {
+                "directUrls": [f"https://www.instagram.com/{handle}/"],
+                "resultsType": "posts",
+                "resultsLimit": 5,
+            })
+            simplified = [{
+                "shortCode": p.get("shortCode"),
+                "caption": (p.get("caption") or "")[:60],
+                "videoPlayCount": p.get("videoPlayCount"),
+                "videoViewCount": p.get("videoViewCount"),
+                "playCount": p.get("playCount"),
+                "likesCount": p.get("likesCount"),
+                "type": p.get("type"),
+                "timestamp": p.get("timestamp"),
+            } for p in posts[:5]]
+            return jsonify({"ok": True, "posts": simplified, "total_returned": len(posts)})
+        except Exception as e:
+            return jsonify({"error": str(e)})
+
     @app.route("/render-check", methods=["POST"])
     def render_check():
         """Renders ONE client PDF and returns size + content snippet — no Slack posting."""
