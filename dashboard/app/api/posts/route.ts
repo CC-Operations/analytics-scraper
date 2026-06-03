@@ -25,13 +25,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, excluded } = await req.json();
+  const { id, excluded, views } = await req.json();
   if (id == null) return NextResponse.json({ error: "id required" }, { status: 400 });
 
-  await pool.query(
-    `UPDATE posts SET excluded = $1 WHERE id = $2`,
-    [excluded, id]
-  );
+  if (views != null) {
+    await pool.query(`UPDATE posts SET views = $1 WHERE id = $2`, [views, id]);
+  }
+  if (excluded != null) {
+    await pool.query(`UPDATE posts SET excluded = $1 WHERE id = $2`, [excluded, id]);
+  }
 
   return NextResponse.json({ ok: true });
 }
