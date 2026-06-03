@@ -13,6 +13,8 @@ const MONTHLY_RETAINER: Record<string, number> = {
   olive:  15000,
 };
 
+const CPM_CLIENTS = new Set(["cosmos"]);
+
 const PLATFORM_CONFIG: Record<string, { label: string; color: string }> = {
   instagram: { label: "Instagram", color: "#E1306C" },
   tiktok:    { label: "TikTok",    color: "#69C9D0" },
@@ -128,12 +130,14 @@ export default function ReportPage() {
   const totalPosts    = posts.length;
   const avgViews      = totalPosts > 0 ? Math.round(totalViews / totalPosts) : 0;
 
-  // ── CPI ──
+  // ── CPI / CPM ──
+  const isCPM = CPM_CLIENTS.has(client);
+  const metricLabel = isCPM ? "CPM" : "CPI";
   const days = from && to
     ? Math.max(1, (new Date(to).getTime() - new Date(from).getTime()) / (1000 * 60 * 60 * 24) + 1)
     : 30;
   const periodRetainer = retainer * (days / 30);
-  const cpi = retainer > 0 && totalViews > 0 ? periodRetainer / totalViews : null;
+  const cpi = retainer > 0 && totalViews > 0 ? (periodRetainer / totalViews) * (isCPM ? 1000 : 1) : null;
 
   // ── ManyChat period stats ──
   const manychatPeriodGained = manychatData?.days
@@ -308,7 +312,7 @@ export default function ReportPage() {
             { label: "Total Views", value: fmt(totalViews) },
             { label: "Total Likes", value: fmt(totalLikes) },
             { label: "Avg Views",   value: fmt(avgViews) },
-            ...((cpi && showCPI) ? [{ label: "CPI", value: `$${cpi.toFixed(3)}` }] : []),
+            ...((cpi && showCPI) ? [{ label: metricLabel, value: `$${cpi.toFixed(2)}` }] : []),
           ].map(s => (
             <div key={s.label} style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 10, padding: "12px 14px" }}>
               <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 9, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6 }}>{s.label}</div>

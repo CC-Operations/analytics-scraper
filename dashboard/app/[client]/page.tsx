@@ -22,6 +22,9 @@ const MONTHLY_RETAINER: Record<string, number> = {
   olive:  15000,
 };
 
+// Clients that track CPM (cost per 1000 views) instead of CPI (cost per view)
+const CPM_CLIENTS = new Set(["cosmos"]);
+
 const PLATFORM_COLORS: Record<string, string> = {
   instagram: "#E82E6A",
   tiktok: "#69c9d0",
@@ -260,7 +263,7 @@ function ViewsChart({ data, timeRange, onTimeChange }: { data: Post[]; timeRange
   );
 }
 
-// ── CPI Stat ──────────────────────────────────────────────────────────────────
+// ── CPI / CPM Stat ────────────────────────────────────────────────────────────
 
 function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
   allPosts: Post[];
@@ -269,6 +272,9 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
   mode: ViewMode;
 }) {
   const retainer = MONTHLY_RETAINER[clientKey] ?? 0;
+  const isCPM = CPM_CLIENTS.has(clientKey);
+  const metricLabel = isCPM ? "CPM" : "CPI";
+
   if (retainer === 0) {
     return <div className="flex items-center justify-center h-full text-white/20 text-sm">No retainer set</div>;
   }
@@ -279,17 +285,15 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
   let pctChange: number | null = null;
 
   if (mode === "all") {
-    // All-time CPI: total spend (retainer × months active) ÷ total views
     const totalViews = allPosts.reduce((s, p) => s + (p.views ?? 0), 0);
     const dates = allPosts.map(p => cleanDate(p.posted_date)).filter(Boolean).sort();
     if (dates.length > 0 && totalViews > 0) {
       const earliest = new Date(dates[0]);
       const monthsActive = Math.max(1, (Date.now() - earliest.getTime()) / (30 * 24 * 60 * 60 * 1000));
       const totalSpend = retainer * monthsActive;
-      cpi = totalSpend / totalViews;
-      subtitle = `per view · ${Math.round(monthsActive)} mo tracked`;
+      cpi = (totalSpend / totalViews) * (isCPM ? 1000 : 1);
+      subtitle = `per ${isCPM ? "1K views" : "view"} · ${Math.round(monthsActive)} mo tracked`;
     }
-    // Month-over-month trend for the arrow
     const byMonth: Record<string, number> = {};
     for (const p of allPosts) {
       if (!p.posted_date || !p.views) continue;
@@ -310,14 +314,13 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
       pctChange = Math.abs(((curCPI - prevCPI) / prevCPI) * 100);
     }
   } else {
-    // This month: prorated retainer ÷ month views
     const monthViews = monthPosts.reduce((s, p) => s + (p.views ?? 0), 0);
     const now = new Date();
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
     const proratedRetainer = retainer * (now.getDate() / daysInMonth);
     if (monthViews > 0) {
-      cpi = proratedRetainer / monthViews;
-      subtitle = `per view · ${now.toLocaleString("default", { month: "long" })}`;
+      cpi = (proratedRetainer / monthViews) * (isCPM ? 1000 : 1);
+      subtitle = `per ${isCPM ? "1K views" : "view"} · ${now.toLocaleString("default", { month: "long" })}`;
     }
   }
 
@@ -325,12 +328,12 @@ function CPIStat({ allPosts, monthPosts, clientKey, mode }: {
     return <div className="flex items-center justify-center h-full text-white/20 text-sm">No data yet</div>;
   }
 
-  const fmtCPI = (v: number) => v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`;
+  const fmtVal = (v: number) => isCPM ? `$${v.toFixed(2)}` : (v >= 1 ? `$${v.toFixed(2)}` : `$${v.toFixed(3)}`);
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-3 py-6">
-      <p className="text-white/55 text-xs uppercase tracking-widest font-medium">CPI</p>
-      <p className="text-6xl font-bold text-white tabular-nums">{fmtCPI(cpi)}</p>
+      <p className="text-white/55 text-xs uppercase tracking-widest font-medium">{metricLabel}</p>
+      <p className="text-6xl font-bold text-white tabular-nums">{fmtVal(cpi)}</p>
       <p className="text-white/30 text-xs">{subtitle}</p>
       {improved !== null && pctChange !== null && (
         <div className="flex items-center gap-2 mt-1">
@@ -801,6 +804,7 @@ export default function ClientPage() {
               <StatCard label="Total Views" value={fmt(totalViews)} weekVal={weekViews} prevWeekVal={prevWeekViews} />
               <StatCard label="Total Likes" value={fmt(totalLikes)} weekVal={weekLikes} prevWeekVal={prevWeekLikes} />
               <StatCard label="Avg Views" value={fmt(avgViews)} />
+
             </div>
 
             {/* Charts */}

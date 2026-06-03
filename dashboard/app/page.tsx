@@ -22,6 +22,8 @@ const MONTHLY_RETAINER: Record<string, number> = {
   olive:  15000,
 };
 
+const CPM_CLIENTS = new Set(["cosmos"]);
+
 function useCountUp(target: number, duration = 1200, started = false) {
   const [value, setValue] = useState(0);
   useEffect(() => {
@@ -175,10 +177,11 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
   const [hovered, setHovered] = useState(false);
 
   const retainer = MONTHLY_RETAINER[summary.client.toLowerCase()] ?? 0;
+  const isCPM = CPM_CLIENTS.has(summary.client.toLowerCase());
   const cpi = (() => {
     if (retainer === 0 || summary.views === 0 || !summary.firstPost) return null;
     const monthsActive = Math.max(1, (Date.now() - new Date(summary.firstPost).getTime()) / (30 * 24 * 60 * 60 * 1000));
-    return (retainer * monthsActive) / summary.views;
+    return ((retainer * monthsActive) / summary.views) * (isCPM ? 1000 : 1);
   })();
 
   return (
@@ -229,7 +232,7 @@ function ClientCard({ summary, index }: { summary: ClientSummary; index: number 
             { label: "Posts", value: fmt(summary.posts), wk: 0, pwk: 0 },
             { label: "Views", value: fmt(summary.views), wk: summary.week_views, pwk: summary.prev_week_views },
             { label: "Likes", value: fmt(summary.likes), wk: summary.week_likes, pwk: summary.prev_week_likes },
-            { label: "CPI", value: cpi != null ? `$${cpi.toFixed(3)}` : "—", wk: 0, pwk: 0 },
+            { label: isCPM ? "CPM" : "CPI", value: cpi != null ? `$${cpi.toFixed(2)}` : "—", wk: 0, pwk: 0 },
           ].map((s) => (
             <div key={s.label}>
               <p className="text-white/45 text-xs uppercase tracking-wider mb-1">{s.label}</p>
