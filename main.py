@@ -188,7 +188,7 @@ def scrape_instagram():
             posts = run_actor("apify~instagram-scraper", {
                 "directUrls": [f"https://www.instagram.com/{h}/" for h in batch],
                 "resultsType": "posts",
-                "resultsLimit": 50,
+                "resultsLimit": 500,
             })
             all_posts.extend(posts)
             print(f"  → {len(posts)} posts")
@@ -230,7 +230,7 @@ def scrape_tiktok():
         try:
             posts = run_actor("clockworks~free-tiktok-scraper", {
                 "profiles": [f"https://www.tiktok.com/@{acct['handle']}"],
-                "resultsPerPage": 50,
+                "resultsPerPage": 500,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -300,7 +300,7 @@ def scrape_twitter():
         try:
             posts = run_actor("apidojo~tweet-scraper", {
                 "startUrls": [f"https://x.com/{acct['handle']}"],
-                "maxItems": 50,
+                "maxItems": 500,
             })
         except Exception as e:
             print(f"  ERROR: {e}")
@@ -621,7 +621,7 @@ if __name__ == "__main__":
             return jsonify({"status": "error", "error": str(e), "trace": traceback.format_exc(), "output": output})
 
     _last_manual_refresh = [0.0]  # timestamp of last manual refresh
-    REFRESH_COOLDOWN_HOURS = 4
+    REFRESH_COOLDOWN_HOURS = 2
 
     @app.route("/refresh", methods=["POST"])
     def refresh():
@@ -642,10 +642,10 @@ if __name__ == "__main__":
         threading.Thread(target=run_scrape, daemon=True).start()
         return jsonify({"status": "started"})
 
-    # Internal 24-hour scrape scheduler
+    # Internal 8-hour scrape scheduler (3x/day)
     def _scheduler():
         while True:
-            time.sleep(24 * 3600)
+            time.sleep(8 * 3600)
             with _scrape_lock:
                 if not _scrape_running:
                     threading.Thread(target=run_scrape, daemon=True).start()
