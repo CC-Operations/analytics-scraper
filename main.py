@@ -649,7 +649,7 @@ if __name__ == "__main__":
             return jsonify({"status": "error", "error": str(e), "trace": traceback.format_exc(), "output": output})
 
     _last_manual_refresh = [0.0]  # timestamp of last manual refresh
-    REFRESH_COOLDOWN_HOURS = 2
+    REFRESH_COOLDOWN_HOURS = 1
 
     @app.route("/refresh", methods=["POST"])
     def refresh():
@@ -669,14 +669,6 @@ if __name__ == "__main__":
         _last_manual_refresh[0] = time.time()
         threading.Thread(target=run_scrape, daemon=True).start()
         return jsonify({"status": "started"})
-
-    # Internal 8-hour scrape scheduler (3x/day)
-    def _scheduler():
-        while True:
-            time.sleep(8 * 3600)
-            with _scrape_lock:
-                if not _scrape_running:
-                    threading.Thread(target=run_scrape, daemon=True).start()
 
     # Weekly report scheduler — fires Friday at 9am ET, checks hourly
     _report_sent_date = [None]  # mutable container so inner fn can update it
@@ -706,9 +698,7 @@ if __name__ == "__main__":
 
             time.sleep(3600)  # check every hour
 
-    # Boot: run initial scrape + start schedulers
-    threading.Thread(target=run_scrape, daemon=True).start()
-    threading.Thread(target=_scheduler, daemon=True).start()
+    # Boot: start weekly report scheduler only (no auto-scrape on boot)
     threading.Thread(target=_weekly_report_scheduler, daemon=True).start()
 
     port = int(os.environ.get("PORT", 8080))
